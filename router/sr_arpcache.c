@@ -11,12 +11,12 @@
 #include "sr_if.h"
 #include "sr_protocol.h"
 
-/* Send arp requests if necessary */
+/* Request for 5 times and destroy if all the requests are ignored */
 void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req, struct sr_if *out_interface){
        time_t now;
        time(&now);
 
-       if (difftime(now, req->sent) > 1.0)
+       if (difftime(now, req->sent) >= 1.0)
        {
            /* ARP request has been sent 5 times with no response */
            if (req->times_sent >= 5)
@@ -24,12 +24,11 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req, struct sr_if *
                struct sr_packet *curr_pkt = req->packets;
               /*send icmp host unreachable
                 to source addr of all pkts waiting on this request*/
-
                 while (curr_pkt != NULL)
                 {
                     struct sr_if *source_iface = sr_get_interface(sr,curr_pkt->iface);
                     printf("Sending ICMP HOST UNREACHABLE message\n");
-                    sr_send_icmp_t3(sr, ICMP_HOST_UNREACHABLE, curr_pkt->buf, source_iface);
+                    sr_send_icmp_t3(sr, ICMP_HOST_UNREACHABLE, curr_pkt->buf, curr_pkt->len, source_iface);
                     curr_pkt = curr_pkt->next;
                 }
 
@@ -52,7 +51,6 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req, struct sr_if *
   checking whether we should resend a request or destroy the arp request.
 */
 void sr_arpcache_sweepreqs(struct sr_instance *sr) {
-
     struct sr_arpreq *request = sr->cache.requests;
 
     while(request != NULL)
@@ -61,19 +59,16 @@ void sr_arpcache_sweepreqs(struct sr_instance *sr) {
         struct sr_if *out_interface = sr_get_interface(sr, packet->iface);
         /* Copy the pointer to the next request in case handle_arpreq
            destroys the request */
-        struct sr_arpreq *cpy;
-
-        if ((cpy = (struct sr_arpreq *)malloc(sizeof(struct sr_arpreq))) == NULL)
+        struct sr_arpreq *nxt = request->next;
+        struct sr_arpentry *entry = sr_arpcache_lookup(&(sr->cache), request->ip);
+        /* Valid IP-MAC mapping does not exist */
+        if (!entry)
         {
-            fprintf(stderr, "malloc in sr_arpcache_sweepreqs failed\n");
+            handle_arpreq(sr, request, out_interface);
         }
 
-        memcpy(cpy, request, sizeof(struct sr_arpreq));
-
-        handle_arpreq(sr, request, out_interface);
-
-        request = cpy->next;
-        free(cpy);
+        free(entry);
+        request = nxt;
     }
 
 }

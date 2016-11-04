@@ -542,23 +542,37 @@ sr_ether_addrs_match_interface( struct sr_instance* sr, /* borrowed */
         return 0;
     }
 
-printf("destination will be fixed\n");
-
     /* TODO */
     /* Check destination, hardware address.  If it is private (i.e. destined
      * to a virtual interface) ensure it is going to the correct topology
      * Note: This check should really be done server side ...
      */
-     struct sr_ip_hdr* ip_hdr = (struct sr_ip_hdr*)(buf + sizeof(ether_hdr));
-     struct sr_rt* rt_entry = sr_lpm(sr, ip_hdr->ip_dst);
-     struct sr_if* dst_iface = sr_get_interface(sr, rt_entry->interface);
-printf("dst->iface %s\n", dst_iface->addr);
-
-     if ( memcmp( ether_hdr->ether_dhost, dst_iface->addr, ETHER_ADDR_LEN) != 0 ){
-        fprintf( stderr, "** Error, destination address does not match interface\n");
-        return 0;
+/*
+    struct sr_rt* rt_entry;
+    if (ethertype(buf) == ethertype_ip)
+    {
+	struct sr_ip_hdr* ip_hdr = (struct sr_ip_hdr*)(buf + sizeof(sr_ethernet_hdr_t));
+	rt_entry = sr_lpm(sr, ip_hdr->ip_dst);
     }
-
+     
+    else if (ethertype(buf) == ethertype_arp)
+    {
+	struct sr_arp_hdr* arp_hdr = (struct sr_arp_hdr*)(buf + sizeof(sr_ethernet_hdr_t));
+	rt_entry = sr_lpm(sr, arp_hdr->ar_tip);
+    }
+*/
+    /* It is destined to a private interface inside the routher */
+/*
+    if (strcmp(name, rt_entry->interface) != 0)
+    {
+	struct sr_if* dst_iface = sr_get_interface(sr, rt_entry->interface);
+	sr_print_if(dst_iface);
+        if ( memcmp( ether_hdr->ether_dhost, dst_iface->addr, ETHER_ADDR_LEN) != 0 ){
+           fprintf( stderr, "** Error, destination address does not match interface\n");
+           return 0;
+	}
+    }
+*/
     return 1;
 
 } /* -- sr_ether_addrs_match_interface -- */
@@ -603,14 +617,14 @@ int sr_send_packet(struct sr_instance* sr /* borrowed */,
 
     /* -- log packet -- */
     sr_log_packet(sr,buf,len);
-printf("%d", sr_ether_addrs_match_interface(sr, buf, iface));
+
     if ( ! sr_ether_addrs_match_interface( sr, buf, iface) ){
         fprintf( stderr, "*** Error: problem with ethernet header, check log\n");
         free ( sr_pkt );
         return -1;
     }
 
-    if( write(sr->sockfd, sr_pkt, total_len) < total_len){
+    if( write(sr->sockfd, sr_pkt, total_len) < total_len ){
         fprintf(stderr, "Error writing packet\n");
         free(sr_pkt);
         return -1;

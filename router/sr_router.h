@@ -39,9 +39,10 @@
 #define ICMP_HOST_UNREACHABLE 3
 #define ICMP_TIME_EXCEEDED 4
 #define ICMP_ECHO 8
-#define DEFAULT_TTL 15
+#define DEFAULT_TTL 64
 #define IPV4 4
 #define WORD_TO_BYTE 4
+#define	IP_DF 0x4000
 
 /* forward declare */
 struct sr_if;
@@ -80,10 +81,12 @@ int sr_read_from_server(struct sr_instance* );
 /* -- sr_router.c -- */
 void sr_init(struct sr_instance* );
 void sr_handlepacket(struct sr_instance* , uint8_t * , unsigned int , char* );
+int check_and_send(struct sr_instance* sr, uint8_t *packet, unsigned int len, const char* iface);
 void sr_send_arp_request(struct sr_instance *sr, struct sr_if *out_interface, struct sr_arpreq *request);
 void sr_send_arp_reply(struct sr_instance *sr, uint8_t * packet, unsigned int length, struct sr_if *source_interface);
-void sr_send_icmp(struct sr_instance *sr, int indicator, uint8_t * packet, struct sr_if *out_interface);
-void sr_send_icmp_t3(struct sr_instance *sr, int indicator, uint8_t * packet, struct sr_if *out_interface);
+void sr_send_icmp_reply(struct sr_instance *sr, uint8_t * packet, unsigned int len, struct sr_if *out_interface);
+void icmp_t3_fill(sr_icmp_t3_hdr_t *icmp_header, int indicator);
+void sr_send_icmp_t3(struct sr_instance *sr, int indicator, uint8_t * packet, unsigned int len, struct sr_if *out_interface);
 int contains_interface_ip(struct sr_instance* sr, uint32_t ip);
 struct sr_rt *sr_lpm(struct sr_instance *sr, uint32_t addr);
 
