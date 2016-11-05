@@ -32,7 +32,7 @@
 #include "sr_dumper.h"
 #include "sr_router.h"
 #include "sr_rt.h"
-#include "sr_utils.h" 
+#include "sr_utils.h"
 
 extern char* optarg;
 
@@ -45,6 +45,9 @@ extern char* optarg;
 #define DEFAULT_SERVER "localhost"
 #define DEFAULT_RTABLE "rtable"
 #define DEFAULT_TOPO 0
+#define DEFAULT_ICMP_TO 60
+#define DEFAULT_TCP_ETO 7440
+#define DEFAULT_TCP_TTO 300
 
 static void usage(char* );
 static void sr_init_instance(struct sr_instance* );
@@ -65,15 +68,22 @@ int main(int argc, char **argv)
     char *template = NULL;
     unsigned int port = DEFAULT_PORT;
     unsigned int topo = DEFAULT_TOPO;
+    int icmp_to = DEFAULT_ICMP_TO;
+    int tcp_eto = DEFAULT_TCP_ETO;
+    int tcp_tto = DEFAULT_TCP_TTO;
+    int nat = 0;
     char *logfile = 0;
     struct sr_instance sr;
 
     printf("Using %s\n", VERSION_INFO);
 
-    while ((c = getopt(argc, argv, "hs:v:p:u:t:r:l:T:")) != EOF)
+    while ((c = getopt(argc, argv, "nhs:v:p:u:t:r:l:T:I:E:R:")) != EOF)
     {
         switch (c)
         {
+            case 'n':
+                nat = 1;
+                break;
             case 'h':
                 usage(argv[0]);
                 exit(0);
@@ -102,6 +112,15 @@ int main(int argc, char **argv)
             case 'T':
                 template = optarg;
                 break;
+            case 'I':
+                icmp_to = optarg;
+                break;
+            case 'E':
+                tcp_eto = optarg;
+                break;
+            case 'R':
+                tcp_tto = optarg;
+                break;
         } /* switch */
     } /* -- while -- */
 
@@ -116,11 +135,7 @@ int main(int argc, char **argv)
     else
         strncpy(sr.template, template, 30);
 
-    /*
-    struct sr_rt *temp = sr_lpm(&sr, 3232236034); 
-    print_addr_ip(temp->dest); 
-    */ 
-
+    sr.nat = nat;
     sr.topo_id = topo;
     strncpy(sr.host,host,32);
 
@@ -181,7 +196,7 @@ int main(int argc, char **argv)
 static void usage(char* argv0)
 {
     printf("Simple Router Client\n");
-    printf("Format: %s [-h] [-v host] [-s server] [-p port] \n",argv0);
+    printf("Format: %s [-n] [-h] [-v host] [-s server] [-p port] \n",argv0);
     printf("           [-T template_name] [-u username] \n");
     printf("           [-t topo id] [-r routing table] \n");
     printf("           [-l log file] \n");

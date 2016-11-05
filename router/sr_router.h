@@ -58,6 +58,7 @@ struct sr_rt;
 struct sr_instance
 {
     int  sockfd;   /* socket to server */
+    int nat;      /* NAT status */
     char user[32]; /* user name */
     char host[32]; /* host name */
     char template[30]; /* template name if any */
@@ -81,7 +82,11 @@ int sr_read_from_server(struct sr_instance* );
 /* -- sr_router.c -- */
 void sr_init(struct sr_instance* );
 void sr_handlepacket(struct sr_instance* , uint8_t * , unsigned int , char* );
-int check_and_send(struct sr_instance* sr, uint8_t *packet, unsigned int len, const char* iface);
+void ip_sanity_check(uint8_t *packet);
+void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, struct sr_if *out_interface);
+void handle_ip(struct sr_instance *sr, uint8_t *packet, unsigned int len, struct sr_if *out_interface);
+void handle_arp_reply(struct sr_instance *sr, uint8_t *packet, struct sr_if *out_interface);
+void check_and_send(struct sr_instance* sr, uint8_t *packet, unsigned int len, const char* iface);
 void sr_send_arp_request(struct sr_instance *sr, struct sr_if *out_interface, struct sr_arpreq *request);
 void sr_send_arp_reply(struct sr_instance *sr, uint8_t * packet, unsigned int length, struct sr_if *source_interface);
 void sr_send_icmp_reply(struct sr_instance *sr, uint8_t * packet, unsigned int len, struct sr_if *out_interface);

@@ -102,6 +102,31 @@ struct sr_icmp_t3_hdr {
 typedef struct sr_icmp_t3_hdr sr_icmp_t3_hdr_t;
 
 
+/*
+ * Structure of a TCP header, naked of options.
+ */
+struct sr_tcp_hdr {
+  uint16_t src_port, dst_port; 	/* source and dest port*/
+  uint32_t seq;                 /* sequence number */
+  uint32_t ack;                 /* acknowledgement number */
+  unsigned int tcp_hl:4;        /* header length */
+  unsigned int reserved:6;      /* reserved */
+  unsigned int flag:6;          /* flag */
+  uint16_t window;              /* window */
+  uint16_t tcp_sum;             /* checksum */
+  uint16_t urgent;
+} __attribute__ ((packed)) ;
+typedef struct sr_tcp_hdr sr_tcp_hdr_t;
+
+
+enum sr_tcp_flag {
+  URG = 100000,
+  ACK = 010000,
+  PSH = 001000,
+  RST = 000100,
+  SYN = 000010,
+  FIN = 000001
+};
 
 
 /*
@@ -147,7 +172,6 @@ struct sr_ethernet_hdr
     uint16_t ether_type;                     /* packet type ID */
 } __attribute__ ((packed)) ;
 typedef struct sr_ethernet_hdr sr_ethernet_hdr_t;
-
 
 
 enum sr_ip_protocol {
