@@ -4,7 +4,18 @@
 #include "sr_nat.h"
 #include <unistd.h>
 
-int sr_nat_init(struct sr_nat *nat) { /* Initializes the nat */
+#define MAX_PORT_NUMBER 65535
+#define TOTAL_WELL_KNOWN_PORTS 1024
+
+sr_nat_connection *create_connection(   uint32_t dst_ip, 
+                                        uint16_t dst_port, 
+                                        uint32_t fin_sent_sequence_number, 
+                                        uint32_t fin_received_sequence_number); 
+
+int sr_nat_init(struct sr_nat *nat, 
+                time_t icmp_query_timeout,
+                time_t tcp_established_timeout,
+                time_t tcp_transmission_timeout) { /* Initializes the nat */
 
   assert(nat);
 
@@ -25,6 +36,10 @@ int sr_nat_init(struct sr_nat *nat) { /* Initializes the nat */
 
   nat->mappings = NULL;
   /* Initialize any variables here */
+
+  nat->icmp_query_timeout = icmp_query_timeout;
+  nat->tcp_established_timeout = tcp_established_timeout;
+  nat->tcp_transmission_timeout = tcp_transmission_timeout;
 
   return success;
 }
@@ -94,8 +109,58 @@ struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_nat *nat,
   pthread_mutex_lock(&(nat->lock));
 
   /* handle insert here, create a mapping, and then return a copy of it */
-  struct sr_nat_mapping *mapping = NULL;
+  struct sr_nat_mapping *copy = NULL;
+  struct sr_nat_mapping *mapping = (sr_nat_mapping *)malloc(sizeof(sr_nat_mapping));
+    
+  /*Case it is tcp mapping*/
+  mapping->ip_int = ip_int /* internal ip addr */
+  mapping->ip_ext = /* external ip addr */
+  mapping->aux_int = aux_int/* internal port or icmp id */
+  mapping->aux_ext = generate_port_number(ip_int, aux_int); /* external port or icmp id */
+  time(&mapping->last_updated); /* use to timeout mappings */
+  mapping->conns = NULL; /* list of connections. null for ICMP */
+  mapping->next = NULL;
 
   pthread_mutex_unlock(&(nat->lock));
   return mapping;
+}
+
+/*combination of private and public*/
+sr_nat_connection *create_connection(   uint32_t dst_ip, 
+                                        uint16_t dst_port, 
+                                        uint32_t fin_sent_sequence_number, 
+                                        uint32_t fin_received_sequence_number)
+{
+    sr_nat_connection *new_connection = malloc(sizeof(sr_nat_connection));
+
+    if (new_connection == NULL)
+    {
+        fprintf(stderr, "malloc failed to allocate a new connection\n");
+        return;
+    }
+
+    new_connection->dst_ip = dst_ip;
+    new_connection->dst_port = dst_port; 
+    new_connection->fin_sent_sequence_number = fin_sent_sequence_number;
+    new_connection->fin_received_sequence_number = fin_received_sequence_number;
+    new_connection->state = tcp_state_established; /*DOUBLE CHECK THIS DECLARATION*/
+
+    return new_connection;
+}
+
+/*
+ * Returns a number
+ * ip_int: the internal ip address,  
+ * aux_int: the internal port number
+ */
+int generate_port_number(uint32_t ip_int, uint16_t aux_int)
+{
+    int result;
+
+    while ((result = ip_int + aux_int + rand() % MAX_PORT_NUMBER) < TOTAL_WELL_KNOWN_PORTS)
+    {
+        return result;
+    }
+
+    return result;
 }
