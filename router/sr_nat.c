@@ -94,7 +94,28 @@ struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_nat *nat,
   pthread_mutex_lock(&(nat->lock));
 
   /* handle insert here, create a mapping, and then return a copy of it */
-  struct sr_nat_mapping *mapping = NULL;
+  struct sr_nat_mapping *mapping = (sr_nat_mapping *)malloc(sizeof(sr_nat_mapping));
+
+
+  
+   
+    
+  /*Case it is tcp mapping*/
+  mapping->ip_int = ip_int
+  mapping->ip_ext = /* internal ip addr */
+  mapping->aux_int = aux_int/* internal port or icmp id */
+  mapping->aux_ext = /* external port or icmp id */
+  time(&mapping->last_updated); /* use to timeout mappings */
+  mapping->conns = /* list of connections. null for ICMP */
+  mapping->next = 
+
+
+
+  if (type == nat_mapping_icmp)
+  {
+    mapping->conns = NULL; /* list of connections. null for ICMP */
+  }
+  
 
   pthread_mutex_unlock(&(nat->lock));
   return mapping;

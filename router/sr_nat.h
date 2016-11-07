@@ -7,6 +7,20 @@
 #include <pthread.h>
 
 typedef enum {
+    tcp_state_listen, 
+    tcp_state_syn_sent, 
+    tcp_state_syn_received,
+    tcp_state_established, 
+    tcp_state_fin_wait_1, 
+    tcp_state_fin_wait_2, 
+    tcp_state_close_wait, 
+    tcp_state_closing, 
+    tcp_state_last_ack, 
+    tcp_state_time_wait, 
+    tcp_state_closed
+} sr_nat_tcp_state
+
+typedef enum {
   nat_mapping_icmp,
   nat_mapping_tcp
   /* nat_mapping_udp, */
@@ -14,8 +28,8 @@ typedef enum {
 
 struct sr_nat_connection {
   /* add TCP connection state data members here */
-
-  struct sr_nat_connection *next;
+    sr_nat_tcp_state state;
+    struct sr_nat_connection *next;
 };
 
 struct sr_nat_mapping {
