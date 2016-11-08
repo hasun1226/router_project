@@ -62,18 +62,21 @@ int sr_nat_destroy(struct sr_nat *nat) {  /* Destroys the nat (free memory) */
 }
 
 void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
-  struct sr_nat *nat = (struct sr_nat *)nat_ptr;
-  while (1) {
-    sleep(1.0);
-    pthread_mutex_lock(&(nat->lock));
+    
+    struct sr_nat *nat = (struct sr_nat *)nat_ptr;
+    while (1) 
+    {
+        sleep(1.0);
+        pthread_mutex_lock(&(nat->lock));
 
-    time_t curtime = time(NULL);
+        time_t curtime = time(NULL);
 
-    /* handle periodic tasks here */
+        /* handle periodic tasks here */
 
-    pthread_mutex_unlock(&(nat->lock));
-  }
-  return NULL;
+        pthread_mutex_unlock(&(nat->lock));
+    }
+    
+    return NULL;
 }
 
 /* Get the mapping associated with given external port.
@@ -81,13 +84,26 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
 struct sr_nat_mapping *sr_nat_lookup_external(struct sr_nat *nat,
     uint16_t aux_ext, sr_nat_mapping_type type ) {
 
-  pthread_mutex_lock(&(nat->lock));
+    pthread_mutex_lock(&(nat->lock));
 
-  /* handle lookup here, malloc and assign to copy */
-  struct sr_nat_mapping *copy = NULL;
+    /* handle lookup here, malloc and assign to copy */
+    struct sr_nat_mapping *copy = NULL;
+    struct sr_nat_mapping *current_entry = nat->mappings;
 
-  pthread_mutex_unlock(&(nat->lock));
-  return copy;
+    while(current_entry != NULL)
+    {
+        if ((current_entry->aux_ext == aux_ext) && (current_entry->type == type))
+        {
+            copy = (struct sr_nat_mapping *) malloc(sizeof(struct sr_nat_mapping));
+            memcpy(copy, current_entry, sizeof(struct sr_nat_mapping));
+            
+            return copy;
+        }
+
+        current_entry = current_entry->next;
+    }
+    pthread_mutex_unlock(&(nat->lock));
+    return copy;
 }
 
 /* Get the mapping associated with given internal (ip, port) pair.
@@ -95,13 +111,27 @@ struct sr_nat_mapping *sr_nat_lookup_external(struct sr_nat *nat,
 struct sr_nat_mapping *sr_nat_lookup_internal(struct sr_nat *nat,
   uint32_t ip_int, uint16_t aux_int, sr_nat_mapping_type type ) {
 
-  pthread_mutex_lock(&(nat->lock));
+    pthread_mutex_lock(&(nat->lock));
 
-  /* handle lookup here, malloc and assign to copy. */
-  struct sr_nat_mapping *copy = NULL;
+    /* handle lookup here, malloc and assign to copy. */
+    struct sr_nat_mapping *copy = NULL;
+    struct sr_nat_mapping *current_entry = nat->mappings;
 
-  pthread_mutex_unlock(&(nat->lock));
-  return copy;
+    while(current_entry != NULL)
+    {
+        if ((current_entry->ip_int == ip_int) && (current_entry->aux_int == aux_int))
+        {
+            copy = (struct sr_nat_mapping *) malloc(sizeof(struct sr_nat_mapping));
+            memcpy(copy, current_entry, sizeof(struct sr_nat_mapping));
+            
+            return copy;
+        }
+
+        current_entry = current_entry->next;
+    }
+
+    pthread_mutex_unlock(&(nat->lock));
+    return copy;
 }
 
 /* Insert a new mapping into the nat's mapping table.
@@ -110,25 +140,27 @@ struct sr_nat_mapping *sr_nat_lookup_internal(struct sr_nat *nat,
 struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_instance* sr,
   uint32_t ip_int, uint16_t aux_int, sr_nat_mapping_type type ) {
   
-  struct sr_nat *nat = sr->nat;
-  pthread_mutex_lock(&(nat->lock));
+    struct sr_nat *nat = sr->nat;
+    pthread_mutex_lock(&(nat->lock));
 
-  /* handle insert here, create a mapping, and then return a copy of it */
-  struct sr_nat_mapping *copy = NULL;
-  struct sr_nat_mapping *mapping = (sr_nat_mapping *)malloc(sizeof(sr_nat_mapping));
-  struct sr_if *external_interface = get_external_interface(sr);
-  
-  /* Case it is tcp mapping */
-  mapping->ip_int = ip_int;                                 /* internal ip addr */
-  mapping->ip_ext = external_interface->ip;                 /* external ip addr */
-  mapping->aux_int = aux_int;                               /* internal port or icmp id */
-  mapping->aux_ext = generate_port_number(ip_int, aux_int); /* external port or icmp id */
-  time(&mapping->last_updated);                             /* use to timeout mappings */
-  mapping->conns = NULL;                                    /* list of connections. null for ICMP */
-  mapping->next = NULL;
+    /* handle insert here, create a mapping, and then return a copy of it */
+    struct sr_nat_mapping *copy = NULL;
+    struct sr_nat_mapping *mapping = nat->mappings;
+    struct sr_if *external_interface = get_external_interface(sr);
+      
+    /* Case it is tcp mapping */
+    mapping->ip_int = ip_int;                                 /* internal ip addr */
+    mapping->ip_ext = external_interface->ip;                 /* external ip addr */
+    mapping->aux_int = aux_int;                               /* internal port or icmp id */
+    mapping->aux_ext = generate_port_number(ip_int, aux_int); /* external port or icmp id */
+    time(&mapping->last_updated);                             /* use to timeout mappings */
+    mapping->conns = NULL;                                    /* list of connections. null for ICMP */
+    mapping->next = NULL;
 
-  pthread_mutex_unlock(&(nat->lock));
-  return mapping;
+    copy = (struct sr_nat_mapping *)malloc(sizeof(struct sr_nat_mapping));
+    memcpy(copy, mapping, sizeof(struct sr_nat_mapping));
+    pthread_mutex_unlock(&(nat->lock));
+    return copy;
 }
 
 /*combination of private and public*/
