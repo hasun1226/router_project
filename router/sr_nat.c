@@ -3,16 +3,15 @@
 #include <assert.h>
 #include "sr_nat.h"
 #include <unistd.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include "sr_if.h"
+#include <string.h>
 
 #define MAX_PORT_NUMBER 65535
 #define TOTAL_WELL_KNOWN_PORTS 1024
 #define DEFAULT_INTERNAL_INTERFACE "eth1"
-sr_nat_connection *create_connection(   uint32_t dst_ip, 
-                                        uint16_t dst_port, 
-                                        uint32_t fin_sent_sequence_number, 
-                                        uint32_t fin_received_sequence_number); 
 
-struct sr_if *get_external_interface(struct sr_instance *sr);
 
 int sr_nat_init(struct sr_nat *nat, 
                 time_t icmp_timeout,
@@ -36,16 +35,71 @@ int sr_nat_init(struct sr_nat *nat,
 
   /* CAREFUL MODIFYING CODE ABOVE THIS LINE! */
 
-  nat->pending_syns = NULL;
+  nat->pending_syn = NULL;
   nat->mappings = NULL;
   
   /* Initialize any variables here */
-  nat->internal_iface_name = DEFAULT_INTERNAL_INTERFACE;
+  nat->internal_interface_name = DEFAULT_INTERNAL_INTERFACE;
   nat->icmp_timeout = icmp_timeout;
   nat->tcp_established_timeout = tcp_established_timeout;
   nat->tcp_transmission_timeout = tcp_transmission_timeout;
 
   return success;
+}
+
+/* 
+ *  Returns 0 if there is no difference otherwise 1.
+ */
+int is_nat_timeout_icmp(struct sr_nat *nat, struct sr_nat_mapping *mapping)
+{
+    time_t now;
+    time(&now);
+    return difftime(now, mapping->last_updated) < nat->icmp_timeout;
+}
+
+/* 
+ *  Returns 0 if there is no difference otherwise 1.
+ */
+int is_nat_timeout_tcp(struct sr_nat *nat, struct sr_nat_connection *connection_entry)
+{
+    time_t now;
+    time(&now);
+    int et_difference = difftime(now, connection_entry->last_updated) < nat->tcp_established_timeout;
+    int trans_timeout = difftime(now, connection_entry->last_updated) < nat->tcp_transmission_timeout;
+    int established = connection_entry->state == tcp_state_established;
+    int trasit = !established;
+    
+    return (et_difference && established) || (trans_timeout && trasit);
+}
+
+void tcp_time_out_connection(struct sr_nat *nat, struct sr_nat_connection *entry)
+{
+    struct sr_nat_connection *current_connection = entry;
+    struct sr_nat_connection *previous_connection = NULL;
+    
+    while (current_connection != NULL)
+    {
+        int deleted = 0;
+
+        if (is_nat_timeout_tcp(nat, current_connection))
+        {
+            if (previous_connection != NULL)
+            {
+                previous_connection->next = current_connection->next;
+            }
+            
+            struct sr_nat_connection *timed_out_entry = current_connection;
+            current_connection = current_connection->next;
+            free(timed_out_entry);
+            deleted = 1;
+        }
+        
+        if (!deleted)
+        {
+            previous_connection = current_connection;
+            current_connection =  current_connection->next;
+        }
+    }
 }
 
 
@@ -64,14 +118,41 @@ int sr_nat_destroy(struct sr_nat *nat) {  /* Destroys the nat (free memory) */
 void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
     
     struct sr_nat *nat = (struct sr_nat *)nat_ptr;
+    
     while (1) 
     {
         sleep(1.0);
         pthread_mutex_lock(&(nat->lock));
 
-        time_t curtime = time(NULL);
+        /*time_t curtime = time(NULL);*/
 
         /* handle periodic tasks here */
+        struct sr_nat_mapping *current_map = nat->mappings;
+        struct sr_nat_mapping *previous_map = NULL;
+        
+        while(current_map != NULL)
+        {
+            int deleted = 0;
+
+            if (is_nat_timeout_icmp(nat, current_map) || is_nat_timeout_tcp(nat, current_map->conns))
+            {
+                if(previous_map != NULL)
+                {
+                    previous_map->next = current_map->next;
+                }
+                
+                struct sr_nat_mapping *timed_out_entry = current_map;
+                current_map = current_map->next;
+                free(timed_out_entry);
+                deleted = 1;
+            }
+
+            if (!deleted)
+            {
+                previous_map = current_map;
+                current_map = current_map->next;  
+            }
+        }
 
         pthread_mutex_unlock(&(nat->lock));
     }
@@ -137,8 +218,8 @@ struct sr_nat_mapping *sr_nat_lookup_internal(struct sr_nat *nat,
 /* Insert a new mapping into the nat's mapping table.
    Actually returns a copy to the new mapping, for thread safety.
  */
-struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_instance* sr,
-  uint32_t ip_int, uint16_t aux_int, sr_nat_mapping_type type ) {
+struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_instance *sr,
+  uint32_t ip_int, uint16_t aux_int, sr_nat_mapping_type type) {
   
     struct sr_nat *nat = sr->nat;
     pthread_mutex_lock(&(nat->lock));
@@ -164,17 +245,17 @@ struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_instance* sr,
 }
 
 /*combination of private and public*/
-sr_nat_connection *create_connection(   uint32_t dst_ip, 
+struct sr_nat_connection *create_connection(   uint32_t dst_ip, 
                                         uint16_t dst_port, 
                                         uint32_t fin_sent_sequence_number, 
                                         uint32_t fin_received_sequence_number)
 {
-    sr_nat_connection *new_connection = malloc(sizeof(sr_nat_connection));
+    struct sr_nat_connection *new_connection = (struct sr_nat_connection *)malloc(sizeof(struct sr_nat_connection));
 
     if (new_connection == NULL)
     {
         fprintf(stderr, "malloc failed to allocate a new connection\n");
-        return;
+        return NULL;
     }
 
     new_connection->dst_ip = dst_ip;
@@ -204,9 +285,10 @@ int generate_port_number(uint32_t ip_int, uint16_t aux_int)
 }
 
 
-struct sr_if *get_external_interface(struct sr_instance *sr)
+struct sr_if* get_external_interface(struct sr_instance *sr)
 {
-    struct sr_if *internal_interface = sr_get_interface(sr, sr->nat.int_iface_name);
+    struct sr_nat *nat = sr->nat;
+    struct sr_if *internal_interface = sr_get_interface(sr, nat->internal_interface_name);
     struct sr_if *current_interface = sr->if_list;
 
     while(current_interface != NULL)

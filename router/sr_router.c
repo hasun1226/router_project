@@ -23,6 +23,7 @@
 #include "sr_arpcache.h"
 #include "sr_utils.h"
 
+
 /*---------------------------------------------------------------------
  * Method: sr_init(void)
  * Scope:  Global
@@ -57,7 +58,7 @@ void sr_init( struct sr_instance* sr,
 
     if (sr->nat_status)
     {
-      sr->nat = (struct sr_nat*)malloc(sizeof(struct sr_nat));
+      sr->nat = (struct sr_nat *)malloc(sizeof(struct sr_nat));
       sr_nat_init(sr->nat, icmp_timeout, tcp_established_timeout, tcp_transmission_timeout);
     }
 
@@ -98,7 +99,7 @@ void sr_handlepacket(struct sr_instance* sr,
   /* The packet is an IP packet*/
   if (frame_type == ethertype_ip) {
       ip_sanity_check(packet);
-      if (!sr->nat) handle_ip(sr, packet, len, out_interface);
+      if (!sr->nat_status) handle_ip(sr, packet, len, out_interface);
       else nat_process(sr, packet, len, out_interface);
   }
 

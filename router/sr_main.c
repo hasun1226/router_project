@@ -33,6 +33,7 @@
 #include "sr_router.h"
 #include "sr_rt.h"
 #include "sr_utils.h"
+#include "sr_nat.h"
 
 extern char* optarg;
 
@@ -114,13 +115,13 @@ int main(int argc, char **argv)
                 template = optarg;
                 break;
             case 'I':
-                icmp_to = optarg;
+                icmp_to = atoi((char *) optarg);
                 break;
             case 'E':
-                tcp_eto = optarg;
+                tcp_eto = atoi((char *) optarg);
                 break;
             case 'R':
-                tcp_tto = optarg;
+                tcp_tto = atoi((char *) optarg);
                 break;
         } /* switch */
     } /* -- while -- */
@@ -184,7 +185,7 @@ int main(int argc, char **argv)
     /* -- whizbang main loop ;-) */
     while( sr_read_from_server(&sr) == 1);
 
-    sr_nat_destroy(sr->nat);
+    sr_nat_destroy(&sr.nat);
     sr_destroy_instance(&sr);
 
     return 0;
