@@ -12,6 +12,8 @@ sr_nat_connection *create_connection(   uint32_t dst_ip,
                                         uint32_t fin_sent_sequence_number, 
                                         uint32_t fin_received_sequence_number); 
 
+struct sr_if *get_external_interface(struct sr_instance *sr);
+
 int sr_nat_init(struct sr_nat *nat, 
                 time_t icmp_timeout,
                 time_t tcp_established_timeout,
@@ -34,7 +36,9 @@ int sr_nat_init(struct sr_nat *nat,
 
   /* CAREFUL MODIFYING CODE ABOVE THIS LINE! */
 
+  nat->pending_syns = NULL;
   nat->mappings = NULL;
+  
   /* Initialize any variables here */
   nat->internal_iface_name = DEFAULT_INTERNAL_INTERFACE;
   nat->icmp_timeout = icmp_timeout;
@@ -103,22 +107,24 @@ struct sr_nat_mapping *sr_nat_lookup_internal(struct sr_nat *nat,
 /* Insert a new mapping into the nat's mapping table.
    Actually returns a copy to the new mapping, for thread safety.
  */
-struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_nat *nat,
+struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_instance* sr,
   uint32_t ip_int, uint16_t aux_int, sr_nat_mapping_type type ) {
-
+  
+  struct sr_nat *nat = sr->nat;
   pthread_mutex_lock(&(nat->lock));
 
   /* handle insert here, create a mapping, and then return a copy of it */
   struct sr_nat_mapping *copy = NULL;
   struct sr_nat_mapping *mapping = (sr_nat_mapping *)malloc(sizeof(sr_nat_mapping));
-    
-  /*Case it is tcp mapping*/
-  mapping->ip_int = ip_int /* internal ip addr */
-  mapping->ip_ext = /* external ip addr */
-  mapping->aux_int = aux_int/* internal port or icmp id */
+  struct sr_if *external_interface = get_external_interface(sr);
+  
+  /* Case it is tcp mapping */
+  mapping->ip_int = ip_int;                                 /* internal ip addr */
+  mapping->ip_ext = external_interface->ip;                 /* external ip addr */
+  mapping->aux_int = aux_int;                               /* internal port or icmp id */
   mapping->aux_ext = generate_port_number(ip_int, aux_int); /* external port or icmp id */
-  time(&mapping->last_updated); /* use to timeout mappings */
-  mapping->conns = NULL; /* list of connections. null for ICMP */
+  time(&mapping->last_updated);                             /* use to timeout mappings */
+  mapping->conns = NULL;                                    /* list of connections. null for ICMP */
   mapping->next = NULL;
 
   pthread_mutex_unlock(&(nat->lock));
@@ -149,7 +155,7 @@ sr_nat_connection *create_connection(   uint32_t dst_ip,
 }
 
 /*
- * Returns a number
+ * Returns a number between 1024 and MAX_PORT_NUMBER
  * ip_int: the internal ip address,  
  * aux_int: the internal port number
  */
@@ -163,4 +169,24 @@ int generate_port_number(uint32_t ip_int, uint16_t aux_int)
     }
 
     return result;
+}
+
+
+struct sr_if *get_external_interface(struct sr_instance *sr)
+{
+    struct sr_if *internal_interface = sr_get_interface(sr, sr->nat.int_iface_name);
+    struct sr_if *current_interface = sr->if_list;
+
+    while(current_interface != NULL)
+    {
+
+        if (internal_interface == current_interface)
+        {
+          return current_interface;
+        }
+
+        current_interface = current_interface->next;
+    }
+    
+    return NULL;
 }
