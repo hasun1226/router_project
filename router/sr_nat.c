@@ -13,7 +13,7 @@ sr_nat_connection *create_connection(   uint32_t dst_ip,
                                         uint32_t fin_received_sequence_number); 
 
 int sr_nat_init(struct sr_nat *nat, 
-                time_t icmp_query_timeout,
+                time_t icmp_timeout,
                 time_t tcp_established_timeout,
                 time_t tcp_transmission_timeout) { /* Initializes the nat */
 
@@ -36,8 +36,8 @@ int sr_nat_init(struct sr_nat *nat,
 
   nat->mappings = NULL;
   /* Initialize any variables here */
-
-  nat->icmp_query_timeout = icmp_query_timeout;
+  nat->internal_iface_name = "eth1";
+  nat->icmp_timeout = icmp_timeout;
   nat->tcp_established_timeout = tcp_established_timeout;
   nat->tcp_transmission_timeout = tcp_transmission_timeout;
 

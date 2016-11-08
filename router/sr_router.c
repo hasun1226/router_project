@@ -31,7 +31,11 @@
  *
  *---------------------------------------------------------------------*/
 
-void sr_init(struct sr_instance* sr)
+void sr_init( struct sr_instance* sr, 
+              int nat_status,
+              time_t icmp_timeout,
+              time_t tcp_established_timeout,
+              time_t tcp_transmission_timeout)
 {
     /* REQUIRES */
     assert(sr);
@@ -48,6 +52,14 @@ void sr_init(struct sr_instance* sr)
     pthread_create(&thread, &(sr->attr), sr_arpcache_timeout, sr);
 
     /* Add initialization code here! */
+
+    sr->nat_status = nat_status;
+
+    if (sr->nat_status)
+    {
+      sr->nat = (struct sr_nat*)malloc(sizeof(struct sr_nat));
+      sr_nat_init(sr->nat, icmp_timeout, tcp_established_timeout, tcp_transmission_timeout);
+    }
 
 } /* -- sr_init -- */
 

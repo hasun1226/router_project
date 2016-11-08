@@ -58,7 +58,7 @@ struct sr_rt;
 struct sr_instance
 {
     int  sockfd;   /* socket to server */
-    int nat;      /* NAT status */
+    int nat_status;      /* NAT status 1 if it is enabled otherwise 0*/ 
     char user[32]; /* user name */
     char host[32]; /* host name */
     char template[30]; /* template name if any */
@@ -69,6 +69,7 @@ struct sr_instance
     struct sr_arpcache cache;   /* ARP cache */
     pthread_attr_t attr;
     FILE* logfile;
+    struct sr_nat nat*; /* NAT Table*/
 };
 
 /* -- sr_main.c -- */
@@ -80,7 +81,11 @@ int sr_connect_to_server(struct sr_instance* ,unsigned short , char* );
 int sr_read_from_server(struct sr_instance* );
 
 /* -- sr_router.c -- */
-void sr_init(struct sr_instance* );
+void sr_init(struct sr_instance*,
+             int nat_status,
+             time_t icmp_timeout,
+             time_t tcp_established_timeout,
+             time_t tcp_transmission_timeout);
 void sr_handlepacket(struct sr_instance* , uint8_t * , unsigned int , char* );
 void ip_sanity_check(uint8_t *packet);
 void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, struct sr_if *out_interface);

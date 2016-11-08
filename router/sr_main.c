@@ -71,8 +71,8 @@ int main(int argc, char **argv)
     int icmp_to = DEFAULT_ICMP_TO;
     int tcp_eto = DEFAULT_TCP_ETO;
     int tcp_tto = DEFAULT_TCP_TTO;
-    int nat = 0;
     char *logfile = 0;
+    int nat_status = 0;
     struct sr_instance sr;
 
     printf("Using %s\n", VERSION_INFO);
@@ -82,7 +82,8 @@ int main(int argc, char **argv)
         switch (c)
         {
             case 'n':
-                nat = 1;
+                nat_status = 1;
+                printf("NAT Enabled \n");
                 break;
             case 'h':
                 usage(argv[0]);
@@ -135,7 +136,7 @@ int main(int argc, char **argv)
     else
         strncpy(sr.template, template, 30);
 
-    sr.nat = nat;
+    sr.nat_status = nat_status;
     sr.topo_id = topo;
     strncpy(sr.host,host,32);
 
@@ -178,11 +179,12 @@ int main(int argc, char **argv)
     }
 
     /* call router init (for arp subsystem etc.) */
-    sr_init(&sr);
+    sr_init(&sr, nat_status, icmp_to, tcp_eto, tcp_tto);
 
     /* -- whizbang main loop ;-) */
     while( sr_read_from_server(&sr) == 1);
 
+    sr_nat_destroy(sr->nat);
     sr_destroy_instance(&sr);
 
     return 0;
