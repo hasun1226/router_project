@@ -6,7 +6,7 @@
 
 #define MAX_PORT_NUMBER 65535
 #define TOTAL_WELL_KNOWN_PORTS 1024
-
+#define DEFAULT_INTERNAL_INTERFACE "eth1"
 sr_nat_connection *create_connection(   uint32_t dst_ip, 
                                         uint16_t dst_port, 
                                         uint32_t fin_sent_sequence_number, 
@@ -36,7 +36,7 @@ int sr_nat_init(struct sr_nat *nat,
 
   nat->mappings = NULL;
   /* Initialize any variables here */
-  nat->internal_iface_name = "eth1";
+  nat->internal_iface_name = DEFAULT_INTERNAL_INTERFACE;
   nat->icmp_timeout = icmp_timeout;
   nat->tcp_established_timeout = tcp_established_timeout;
   nat->tcp_transmission_timeout = tcp_transmission_timeout;
