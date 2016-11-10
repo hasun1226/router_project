@@ -185,7 +185,7 @@ int main(int argc, char **argv)
     /* -- whizbang main loop ;-) */
     while( sr_read_from_server(&sr) == 1);
 
-    sr_nat_destroy(&sr.nat);
+    sr_nat_destroy(sr.nat);
     sr_destroy_instance(&sr);
 
     return 0;

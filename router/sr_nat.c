@@ -72,34 +72,127 @@ int is_nat_timeout_tcp(struct sr_nat *nat, struct sr_nat_connection *connection_
     return (et_difference && established) || (trans_timeout && trasit);
 }
 
-void tcp_time_out_connection(struct sr_nat *nat, struct sr_nat_connection *entry)
+int tcp_time_out_connection(struct sr_nat *nat, struct sr_nat_connection **head)
 {
-    struct sr_nat_connection *current_connection = entry;
-    struct sr_nat_connection *previous_connection = NULL;
+    struct sr_nat_connection *current_connection = *head;
     
     while (current_connection != NULL)
     {
-        int deleted = 0;
 
         if (is_nat_timeout_tcp(nat, current_connection))
         {
-            if (previous_connection != NULL)
-            {
-                previous_connection->next = current_connection->next;
-            }
-            
-            struct sr_nat_connection *timed_out_entry = current_connection;
-            current_connection = current_connection->next;
-            free(timed_out_entry);
-            deleted = 1;
+           deleteConnection(head, current_connection);
         }
-        
-        if (!deleted)
-        {
-            previous_connection = current_connection;
-            current_connection =  current_connection->next;
-        }
+
+        current_connection = current_connection->next;
     }
+
+    return (*head == NULL);
+}
+
+/*
+ * Delete the node n from the list of node.
+ *
+ * head: the head of the list.
+ * n: the node to be deleted.
+ */
+void deleteConnection(struct sr_nat_connection **head, struct sr_nat_connection *n)
+{
+    /* When node to be deleted is head node*/
+    if(*head == n)
+    { 
+        /* store address of current node */
+        struct sr_nat_connection *temp = *head;
+        *head = temp->next;
+ 
+        /* free memory */
+        free(temp);
+ 
+        return;
+    }
+ 
+    /* When it is not the first node, follow the normal deletion process*/
+ 
+    /* find the previous node */
+    struct sr_nat_connection *prev = *head;
+
+    while(prev->next != NULL && prev->next != n)
+    {
+        prev = prev->next;
+    }
+        
+    /* Check if node really exists in Linked List */
+    if(prev->next == NULL)
+    {
+        printf("\n the given node is not in Linked List\n");
+        return;
+    }
+ 
+    /* Remove node from Linked List */
+    prev->next = prev->next->next;
+ 
+    /* Free memory */
+    free(n);
+
+    return; 
+}
+
+void tcp_time_out_mapping(struct sr_nat *nat, struct sr_nat_mapping **head)
+{
+    struct sr_nat_mapping *current_mapping = *head;
+    
+    while (current_mapping != NULL)
+    {
+
+        if ((current_mapping->type == nat_mapping_icmp && is_nat_timeout_icmp(nat, current_mapping)) || 
+            (current_mapping->type == nat_mapping_tcp && tcp_time_out_connection(nat, &current_mapping->conns)))
+        {
+           deleteMapping(head, current_mapping);
+        }
+
+        current_mapping = current_mapping->next;
+    }
+}
+
+void deleteMapping(struct sr_nat_mapping **head, struct sr_nat_mapping *n)
+{
+     /* When node to be deleted is head node*/
+    if(*head == n)
+    {
+        /* store address of current node */
+        struct sr_nat_mapping *temp = *head;
+        *head = temp->next;
+ 
+        /* free memory */
+        free(temp);
+ 
+        return;
+    }
+ 
+    /* When it is not the first node, follow the normal deletion process*/
+ 
+    /* find the previous node */
+    struct sr_nat_mapping *prev = *head;
+
+    while(prev->next != NULL && prev->next != n)
+    {
+        prev = prev->next;
+    }
+        
+    /* Check if node really exists in Linked List */
+    if(prev->next == NULL)
+    {
+        printf("\n Given node is not present in Linked List");
+        return;
+    }
+ 
+    /* Remove node from Linked List */
+    prev->next = prev->next->next;
+ 
+    /* Free memory */
+    free(n);
+
+    return; 
 }
 
 
@@ -127,32 +220,10 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
         /*time_t curtime = time(NULL);*/
 
         /* handle periodic tasks here */
-        struct sr_nat_mapping *current_map = nat->mappings;
-        struct sr_nat_mapping *previous_map = NULL;
+
+        tcp_time_out_mapping(nat, &nat->mappings);
         
-        while(current_map != NULL)
-        {
-            int deleted = 0;
-
-            if (is_nat_timeout_icmp(nat, current_map) || is_nat_timeout_tcp(nat, current_map->conns))
-            {
-                if(previous_map != NULL)
-                {
-                    previous_map->next = current_map->next;
-                }
-                
-                struct sr_nat_mapping *timed_out_entry = current_map;
-                current_map = current_map->next;
-                free(timed_out_entry);
-                deleted = 1;
-            }
-
-            if (!deleted)
-            {
-                previous_map = current_map;
-                current_map = current_map->next;  
-            }
-        }
+        /*NEED TO ADD TIMEOUT FOR PENDING SYNS*/
 
         pthread_mutex_unlock(&(nat->lock));
     }

@@ -86,10 +86,14 @@ struct sr_nat_connection *create_connection(    uint32_t dst_ip,
                                                 uint32_t fin_received_sequence_number); 
 
 struct sr_if *get_external_interface(struct sr_instance *sr);
-void tcp_time_out_connection(struct sr_nat *nat, struct sr_nat_connection *entry);
+int tcp_time_out_connection(struct sr_nat *nat, struct sr_nat_connection **head);
+void deleteConnection(struct sr_nat_connection **head, struct sr_nat_connection *n);
 int is_nat_timeout_tcp(struct sr_nat *nat, struct sr_nat_connection *connection_entry);
 int is_nat_timeout_icmp(struct sr_nat *nat, struct sr_nat_mapping *mapping);
 int generate_port_number(uint32_t ip_int, uint16_t aux_int);
+
+void tcp_time_out_mapping(struct sr_nat *nat, struct sr_nat_mapping **head);
+void deleteMapping(struct sr_nat_mapping **head, struct sr_nat_mapping *n);
 
 int   sr_nat_destroy(struct sr_nat *nat);  /* Destroys the nat (free memory) */
 void *sr_nat_timeout(void *nat_ptr);  /* Periodic Timout */
