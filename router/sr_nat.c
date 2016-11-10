@@ -201,10 +201,31 @@ int sr_nat_destroy(struct sr_nat *nat) {  /* Destroys the nat (free memory) */
   pthread_mutex_lock(&(nat->lock));
 
   /* free nat memory here */
+    
+    struct sr_nat_mapping *current_mapping = nat->mappings;
+    struct sr_nat_mapping *temp_mapping;
 
-  pthread_kill(nat->thread, SIGKILL);
-  return pthread_mutex_destroy(&(nat->lock)) &&
-    pthread_mutexattr_destroy(&(nat->attr));
+    while (current_mapping != NULL)
+    {
+        struct sr_nat_connection *current_connection = current_mapping->conns;
+        struct sr_nat_connection *temp_connection;
+
+        while(current_connection != NULL)
+        {
+            temp_connection = current_connection;
+            current_connection = current_connection->next;
+            free(temp_connection);
+        }
+        
+        temp_mapping = current_mapping;
+        current_mapping = current_mapping->next;
+        free(temp_mapping);
+    }
+
+    /* Todo: NEED TO DELETE PENDING SYNS*/
+    pthread_kill(nat->thread, SIGKILL);
+    return  pthread_mutex_destroy(&(nat->lock)) &&
+            pthread_mutexattr_destroy(&(nat->attr));
 
 }
 
@@ -223,7 +244,7 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
 
         tcp_time_out_mapping(nat, &nat->mappings);
         
-        /*NEED TO ADD TIMEOUT FOR PENDING SYNS*/
+        /* Todo: NEED TO ADD TIMEOUT FOR PENDING SYNS */
 
         pthread_mutex_unlock(&(nat->lock));
     }
