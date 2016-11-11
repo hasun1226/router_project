@@ -32,7 +32,7 @@
  *
  *---------------------------------------------------------------------*/
 
-void sr_init( struct sr_instance* sr, 
+void sr_init( struct sr_instance* sr,
               int nat_status,
               time_t icmp_timeout,
               time_t tcp_established_timeout,
@@ -54,7 +54,7 @@ void sr_init( struct sr_instance* sr,
 
     /* Add initialization code here! */
 
-    sr->nat_status = nat_status;
+    /* sr->nat_status = nat_status; */
 
     if (sr->nat_status)
     {
@@ -100,7 +100,7 @@ void sr_handlepacket(struct sr_instance* sr,
   if (frame_type == ethertype_ip) {
       ip_sanity_check(packet);
       if (!sr->nat_status) handle_ip(sr, packet, len, out_interface);
-      else nat_process(sr, packet, len, out_interface);
+      else nat_process(sr, packet, len, interface);
   }
 
   /* The packet is an ARP packet */
@@ -152,38 +152,54 @@ void ip_sanity_check(uint8_t *packet) {
  * Update relevant checksums
  * Route packet
  */
-void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, struct sr_if *out_interface)
+void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char *interface)
 {
-    /* Prepare outgoing (incoming) packet */
-    uint8_t *buf = (uint8_t *) malloc(len);
-    if (!buf)
-    {
-        fprintf(stderr, "malloc failed in nat_process\n");
-        return;
-    }
-
-    memcpy(buf, packet, len);
-    sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) (buf + sizeof(sr_ethernet_hdr_t));
+    sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t));
 
     if (ip_header->ip_p == ip_protocol_icmp)
     {
-        sr_icmp_hdr_t *icmp_hdr = (sr_icmp_hdr_t *) (buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+        sr_icmp_hdr_t *icmp_hdr = (sr_icmp_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
 
-        /* Packet is outbound */
-        if (!contains_interface_ip(sr, ip_header->ip_dst))
-            /* sr_nat_mapping *mapping = sr_nat_lookup_external(struct sr_nat *nat, uint16_t aux_ext, sr_nat_mapping_type type) */
-            /* if (!mapping) sr_nat_insert_mapping(struct sr_nat *nat, uint32_t ip_int, uint16_t aux_int, sr_nat_mapping_type type) */
-            return;
+        /* Packet is from the internal interface */
+        if (!strcmp(interface, (sr->nat)->internal_interface_name))
+        {
+            sr_nat_mapping *mapping = sr_nat_lookup_internal(sr->nat, ip_header->ip_src, icmp_hdr->icmp_id, nat_mapping_icmp);
+
+            /* No such mapping, insert it */
+            if (!mapping)
+            {
+                sr_nat_mapping *inserted = sr_nat_insert_mapping(sr->nat, ip_header->ip_src, icmp_hdr->icmp_id, nat_mapping_icmp);
+                free(inserted);
+                return;
+            }
+
+            /* Rewrite outgoing packet */
+            ip_header->ip_src = sr_get_interface(sr, interface)->ip;
+            icmp_hdr->icmp_id = mapping->aux_ext;
+            icmp_hdr->icmp_sum = 0;
+            icmp_hdr->icmp_sum = cksum(icmp_hdr, ntohs(ip_header->ip_len) - ip_hdr_bytelen);
+
+            free(mapping);
+        }
 
         else
         {
-            /* if (!sr_nat_lookup_internal(struct sr_nat *nat, uint32_t ip_int,
-                                           uint16_t aux_int, sr_nat_mapping_type type)) then drop packet */
-        }
+            sr_nat_mapping *mapping = sr_nat_lookup_external(struct sr_nat *nat, icmp_hdr->icmp_id, nat_mapping_icmp);
 
-    /* Rewrite ICMP id, IP src(dst) for outgoing (incoming) packets */
-    /* Checksum */
-    /* check_and_send(buf); */
+            /* No such mapping, drop it */
+            if (!mapping)
+            {
+                return;
+            }
+
+            /* Rewrite the packet going to internal interface */
+            ip_header->ip_dst = mapping->ip_int;
+            icmp_hdr->icmp_id = mapping->aux_int;
+            icmp_hdr->icmp_sum = 0;
+            icmp_hdr->icmp_sum = cksum(icmp_hdr, ntohs(ip_header->ip_len) - ip_hdr_bytelen);
+
+            free(mapping);
+        }
     }
 
     else if (ip_header->ip_p == ip_protocol_tcp)

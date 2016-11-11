@@ -60,7 +60,7 @@ struct sr_nat;
 struct sr_instance
 {
     int  sockfd;   /* socket to server */
-    int nat_status;      /* NAT status 1 if it is enabled otherwise 0*/ 
+    int nat_status;      /* NAT status 1 if it is enabled otherwise 0*/
     char user[32]; /* user name */
     char host[32]; /* host name */
     char template[30]; /* template name if any */
@@ -90,7 +90,7 @@ void sr_init(struct sr_instance*,
              time_t tcp_transmission_timeout);
 void sr_handlepacket(struct sr_instance* , uint8_t * , unsigned int , char* );
 void ip_sanity_check(uint8_t *packet);
-void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, struct sr_if *out_interface);
+void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char *interface);
 void handle_ip(struct sr_instance *sr, uint8_t *packet, unsigned int len, struct sr_if *out_interface);
 void handle_arp_reply(struct sr_instance *sr, uint8_t *packet, struct sr_if *out_interface);
 void check_and_send(struct sr_instance* sr, uint8_t *packet, unsigned int len, const char* iface);
@@ -109,7 +109,7 @@ void sr_set_ether_addr(struct sr_instance* , const unsigned char* );
 void sr_print_if_list(struct sr_instance* );
 
 /* -- sr_nat_init.c -- */
-int sr_nat_init(struct sr_nat *nat, 
+int sr_nat_init(struct sr_nat *nat,
                 time_t icmp_timeout,
                 time_t tcp_established_timeout,
                 time_t tcp_transmission_timeout);

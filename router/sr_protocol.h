@@ -83,6 +83,8 @@ struct sr_icmp_hdr {
   uint8_t icmp_type;
   uint8_t icmp_code;
   uint16_t icmp_sum;
+  uint16_t icmp_id;
+  uint16_t icmp_seq;
 
 } __attribute__ ((packed)) ;
 typedef struct sr_icmp_hdr sr_icmp_hdr_t;
@@ -109,8 +111,6 @@ struct sr_tcp_hdr {
   uint16_t src_port, dst_port; 	/* source and dest port*/
   uint32_t seq;                 /* sequence number */
   uint32_t ack;                 /* acknowledgement number */
-  unsigned int tcp_hl:4;        /* header length */
-  unsigned int reserved:6;      /* reserved */
   unsigned int flag:6;          /* flag */
   uint16_t window;              /* window */
   uint16_t tcp_sum;             /* checksum */
@@ -120,12 +120,12 @@ typedef struct sr_tcp_hdr sr_tcp_hdr_t;
 
 
 enum sr_tcp_flag {
-  URG = 100000,
-  ACK = 010000,
-  PSH = 001000,
-  RST = 000100,
-  SYN = 000010,
-  FIN = 000001
+  URG = 0x20,
+  ACK = 0x10,
+  PSH = 0x08,
+  RST = 0x04,
+  SYN = 0x02,
+  FIN = 0x01
 };
 
 
