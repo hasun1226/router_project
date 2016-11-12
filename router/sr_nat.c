@@ -324,7 +324,7 @@ struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_nat *nat,
     mapping->ip_int = ip_int;                                 /* internal ip addr */
     mapping->ip_ext = ip_ext;                                 /* external ip addr */
     mapping->aux_int = aux_int;                               /* internal port or icmp id */
-    mapping->aux_ext = generate_port_number(ip_int, aux_int); /* external port or icmp id */
+    mapping->aux_ext = generate_port_number(nat->mappings, ip_int, aux_int); /* external port or icmp id */
     time(&mapping->last_updated);                             /* use to timeout mappings */
     mapping->conns = NULL;                                    /* list of connections. null for ICMP */
 
@@ -364,19 +364,53 @@ struct sr_nat_connection *create_connection(   uint32_t dst_ip,
 
 /*
  * Returns a number between 1024 and MAX_PORT_NUMBER
+ * mappings: the list of mappings
  * ip_int: the internal ip address,
  * aux_int: the internal port number
  */
-int generate_port_number(uint32_t ip_int, uint16_t aux_int)
+int generate_port_number(struct sr_nat_mapping *mappings, uint32_t ip_int, uint16_t aux_int)
 {
-    int result;
+    int result = ip_int + aux_int + rand() % MAX_PORT_NUMBER;
 
-    while ((result = ip_int + aux_int + rand() % MAX_PORT_NUMBER) < TOTAL_WELL_KNOWN_PORTS || result > MAX_PORT_NUMBER)
+    while (result  < TOTAL_WELL_KNOWN_PORTS || result > MAX_PORT_NUMBER || !is_unique_port_number(mappings, result))
     {
-
+        result = ip_int + aux_int + rand() % MAX_PORT_NUMBER;
     }
 
     return result;
+}
+
+
+/*
+ * Returns 1 if the port number is unique otherise 0
+ * mappings: the list of mappings
+ * port_number: the givent port number
+ */
+int is_unique_port_number(struct sr_nat_mapping *mappings, int port_number)
+{
+    struct sr_nat_mapping *current_mapping = mappings;
+
+    while (current_mapping != NULL)
+    {
+        if (current_mapping->aux_ext == port_number){
+            return 0;
+        }
+        current_mapping = current_mapping->next;
+    }
+    return 1;
+}
+
+int is_unique(struct sr_nat_mapping *mappings, int number)
+{
+    struct sr_nat_mapping *current_mapping = mappings;
+
+    while (current_mapping != NULL)
+    {
+        if (current_mapping->aux_ext == number){
+            return 0;
+        }
+    }
+    return 1;
 }
 
 /*

@@ -89,7 +89,8 @@ int tcp_time_out_connection(struct sr_nat *nat, struct sr_nat_connection **head)
 void deleteConnection(struct sr_nat_connection **head, struct sr_nat_connection *n);
 int is_nat_timeout_tcp(struct sr_nat *nat, struct sr_nat_connection *connection_entry);
 int is_nat_timeout_icmp(struct sr_nat *nat, struct sr_nat_mapping *mapping);
-int generate_port_number(uint32_t ip_int, uint16_t aux_int);
+int generate_port_number(struct sr_nat_mapping *mappings, uint32_t ip_int, uint16_t aux_int);
+int is_unique_port_number(struct sr_nat_mapping *mappings, int port_number);
 
 void tcp_time_out_mapping(struct sr_nat *nat, struct sr_nat_mapping **head);
 void deleteMapping(struct sr_nat_mapping **head, struct sr_nat_mapping *n);
