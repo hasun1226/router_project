@@ -400,19 +400,6 @@ int is_unique_port_number(struct sr_nat_mapping *mappings, int port_number)
     return 1;
 }
 
-int is_unique(struct sr_nat_mapping *mappings, int number)
-{
-    struct sr_nat_mapping *current_mapping = mappings;
-
-    while (current_mapping != NULL)
-    {
-        if (current_mapping->aux_ext == number){
-            return 0;
-        }
-    }
-    return 1;
-}
-
 /*
 struct sr_if* get_external_interface(struct sr_instance *sr)
 {
