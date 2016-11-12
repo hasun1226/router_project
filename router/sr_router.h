@@ -111,6 +111,7 @@ void sr_print_if_list(struct sr_instance* );
 
 /* -- sr_nat_init.c -- */
 int sr_nat_init(struct sr_nat *nat,
+                struct sr_if *external_if,
                 time_t icmp_timeout,
                 time_t tcp_established_timeout,
                 time_t tcp_transmission_timeout);

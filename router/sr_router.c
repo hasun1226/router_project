@@ -59,8 +59,9 @@ void sr_init( struct sr_instance* sr,
 
     if (sr->nat_status)
     {
-      sr->nat = (struct sr_nat *)malloc(sizeof(struct sr_nat));
-      sr_nat_init(sr->nat, icmp_timeout, tcp_established_timeout, tcp_transmission_timeout);
+        struct sr_if *external_if = sr_get_interface(sr, DEFAULT_EXTERNAL_INTERFACE);
+        sr->nat = (struct sr_nat *)malloc(sizeof(struct sr_nat));
+        sr_nat_init(sr->nat, external_if, icmp_timeout, tcp_established_timeout, tcp_transmission_timeout);
     }
 
 } /* -- sr_init -- */
@@ -155,35 +156,47 @@ void ip_sanity_check(uint8_t *packet) {
  */
 void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char *interface)
 {
-    sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t));
-    struct sr_if *external_if = sr_get_interface(sr, DEFAULT_EXTERNAL_INTERFACE);
+    /* Prepare a packet buf that will be routed */
+    uint8_t *buf = (uint8_t *) malloc(len);
+
+    if(!buf)
+    {
+        fprintf(stderr, "malloc in IP packet forwarding failed\n");
+        return;
+    }
+
+    memcpy(buf, packet, len);
+
+    sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) (buf + sizeof(sr_ethernet_hdr_t));
     int ip_hdr_bytelen = ip_header->ip_hl * WORD_TO_BYTE;
 
     if (ip_header->ip_p == ip_protocol_icmp)
     {
-        sr_icmp_hdr_t *icmp_hdr = (sr_icmp_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+        sr_icmp_hdr_t *icmp_hdr = (sr_icmp_hdr_t *) (buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+
+        if (icmp_hdr->icmp_type != ICMP_ECHO || icmp_hdr->icmp_type != ICMP_ECHO_REPLY) return;
 
         /* Packet is from the internal interface */
         if (!strcmp(interface, (sr->nat)->internal_interface_name))
         {
             struct sr_nat_mapping *mapping = sr_nat_lookup_internal(sr->nat, ip_header->ip_src, icmp_hdr->icmp_id, nat_mapping_icmp);
-            uint32_t ip_ext = external_if->ip;
 
             /* No such mapping, insert it */
             if (!mapping)
             {
-                struct sr_nat_mapping *inserted = sr_nat_insert_mapping(sr->nat, ip_header->ip_src, ip_ext, icmp_hdr->icmp_id, nat_mapping_icmp);
-                free(inserted);
-                return;
+                mapping = sr_nat_insert_mapping(sr->nat, ip_header->ip_src, icmp_hdr->icmp_id, nat_mapping_icmp);
             }
 
             /* Rewrite outgoing packet */
-            ip_header->ip_src = ip_ext;
+            ip_header->ip_src = sr_get_interface(sr, DEFAULT_EXTERNAL_INTERFACE)->ip;
             icmp_hdr->icmp_id = mapping->aux_ext;
             icmp_hdr->icmp_sum = 0;
             icmp_hdr->icmp_sum = cksum(icmp_hdr, ntohs(ip_header->ip_len) - ip_hdr_bytelen);
 
+            /* Update time of the mapping */
+            mapping->last_updated = time(NULL);
             free(mapping);
+            check_and_send(sr, buf, len, DEFAULT_EXTERNAL_INTERFACE);
         }
 
         else
@@ -191,10 +204,7 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
             struct sr_nat_mapping *mapping = sr_nat_lookup_external(sr->nat, icmp_hdr->icmp_id, nat_mapping_icmp);
 
             /* No such mapping, drop it */
-            if (!mapping)
-            {
-                return;
-            }
+            if (!mapping) return;
 
             /* Rewrite the packet going to internal interface */
             ip_header->ip_dst = mapping->ip_int;
@@ -202,29 +212,50 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
             icmp_hdr->icmp_sum = 0;
             icmp_hdr->icmp_sum = cksum(icmp_hdr, ntohs(ip_header->ip_len) - ip_hdr_bytelen);
 
+            /* Update time of the mapping */
+            mapping->last_updated = time(NULL);
             free(mapping);
+            check_and_send(sr, buf, len, (sr->nat)->internal_interface_name);
         }
+
     }
 
     else if (ip_header->ip_p == ip_protocol_tcp)
     {
-        sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+        sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t *) (buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
 
-        /* Packet is outbound */
-        if (!contains_interface_ip(sr, ip_header->ip_dst))
-            /* sr_nat_mapping *mapping = sr_nat_lookup_external(struct sr_nat *nat, uint16_t aux_ext, sr_nat_mapping_type type) */
-            /* if (!mapping) sr_nat_insert_mapping(struct sr_nat *nat, uint32_t ip_int, uint16_t aux_int, sr_nat_mapping_type type) */
-            return;
+        /* Packet is outbound insert or lookup mapping */
+        if (!strcmp(interface, (sr->nat)->internal_interface_name))
+        {
+            struct sr_nat_mapping *mapping = sr_nat_lookup_internal(sr->nat, ip_header->ip_src, tcp_hdr->src_port, nat_mapping_tcp);
+
+            if (!mapping)
+            {
+                mapping = sr_nat_insert_mapping(sr->nat, ip_header->ip_src, tcp_hdr->src_port, nat_mapping_tcp);
+                mapping->ip_ext = ip_header->ip_dst;
+                mapping->aux_ext = tcp_hdr->dst_port;
+            }
+
+            /* Connection for TCP: mapping->conn */
+
+            /* Update time of the mapping */
+            mapping->last_updated = time(NULL);
+            free(mapping);
+        }
 
         else
         {
-            /* if (tcp_hdr->flag != SYN && !sr_nat_lookup_internal(struct sr_nat *nat, uint32_t ip_int,
-                                            uint16_t aux_int, sr_nat_mapping_type type)) then drop packet */
-        }
+            struct sr_nat_mapping *mapping = sr_nat_lookup_external(sr->nat, tcp_hdr->dst_port, nat_mapping_tcp);
 
-    /* Rewrite TCP port, IP src(dst) for outgoing (incoming) packets */
-    /* Checksum */
-    /* check_and_send(buf); */
+            /* No such mapping and not a SYN, drop it */
+            if (tcp_hdr->flag != SYN && mapping == NULL) return;
+
+            /* Connection for TCP: mapping->conn */
+
+            /* Update time of the mapping */
+            mapping->last_updated = time(NULL);
+            free(mapping);
+        }
     }
 }
 

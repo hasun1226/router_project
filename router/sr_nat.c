@@ -1,12 +1,12 @@
 
 #include <signal.h>
 #include <assert.h>
-#include "sr_nat.h"
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include "sr_if.h"
 #include <string.h>
+#include "sr_nat.h"
+#include "sr_if.h"
 
 #define MAX_PORT_NUMBER 65535
 #define TOTAL_WELL_KNOWN_PORTS 1024
@@ -14,6 +14,7 @@
 
 
 int sr_nat_init(struct sr_nat *nat,
+                struct sr_if *ext_if,
                 time_t icmp_timeout,
                 time_t tcp_established_timeout,
                 time_t tcp_transmission_timeout) { /* Initializes the nat */
@@ -40,6 +41,7 @@ int sr_nat_init(struct sr_nat *nat,
 
   /* Initialize any variables here */
   nat->internal_interface_name = DEFAULT_INTERNAL_INTERFACE;
+  nat->ext_if = ext_if;
   nat->icmp_timeout = icmp_timeout;
   nat->tcp_established_timeout = tcp_established_timeout;
   nat->tcp_transmission_timeout = tcp_transmission_timeout;
@@ -287,16 +289,19 @@ struct sr_nat_mapping *sr_nat_lookup_internal(struct sr_nat *nat,
     pthread_mutex_lock(&(nat->lock));
 
     /* handle lookup here, malloc and assign to copy. */
-    struct sr_nat_mapping *copy = NULL;
+    struct sr_nat_mapping *copy = (struct sr_nat_mapping *) malloc(sizeof(struct sr_nat_mapping));
     struct sr_nat_mapping *current_entry = nat->mappings;
 
     while(current_entry != NULL)
     {
         if ((current_entry->ip_int == ip_int) && (current_entry->aux_int == aux_int))
         {
-            copy = (struct sr_nat_mapping *) malloc(sizeof(struct sr_nat_mapping));
             memcpy(copy, current_entry, sizeof(struct sr_nat_mapping));
 
+            /* In case my understanding of port overloading is correct,
+               there may be several internal ip-port pairs */
+            /* if (type = nat_mapping_tcp) copy = copy->next;
+            else */
             return copy;
         }
 
@@ -311,20 +316,21 @@ struct sr_nat_mapping *sr_nat_lookup_internal(struct sr_nat *nat,
    Actually returns a copy to the new mapping, for thread safety.
  */
 struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_nat *nat,
-  uint32_t ip_int, uint32_t ip_ext, uint16_t aux_int, sr_nat_mapping_type type) {
+  uint32_t ip_int, uint16_t aux_int, sr_nat_mapping_type type) {
 
     pthread_mutex_lock(&(nat->lock));
 
     /* handle insert here, create a mapping, and then return a copy of it */
     struct sr_nat_mapping *mapping = malloc(sizeof(struct sr_nat_mapping *));
-    /* struct sr_if *external_interface = get_external_interface(sr); */
+    struct sr_if *external_interface = nat->ext_if;
+    uint16_t aux_ext = generate_port_number(nat->mappings, ip_int, aux_int);
 
     /* Case it is tcp mapping */
     mapping->type = type;                                     /* type */
     mapping->ip_int = ip_int;                                 /* internal ip addr */
-    mapping->ip_ext = ip_ext;                                 /* external ip addr */
+    mapping->ip_ext = external_interface->ip;                 /* external ip addr */
     mapping->aux_int = aux_int;                               /* internal port or icmp id */
-    mapping->aux_ext = generate_port_number(nat->mappings, ip_int, aux_int); /* external port or icmp id */
+    mapping->aux_ext = aux_ext;                               /* external port or icmp id */
     time(&mapping->last_updated);                             /* use to timeout mappings */
     mapping->conns = NULL;                                    /* list of connections. null for ICMP */
 
@@ -361,6 +367,7 @@ struct sr_nat_connection *create_connection(   uint32_t dst_ip,
 
     return new_connection;
 }
+
 
 /*
  * Returns a number between 1024 and MAX_PORT_NUMBER
