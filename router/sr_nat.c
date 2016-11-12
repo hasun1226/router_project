@@ -373,7 +373,7 @@ int generate_port_number(uint32_t ip_int, uint16_t aux_int)
 
     while ((result = ip_int + aux_int + rand() % MAX_PORT_NUMBER) < TOTAL_WELL_KNOWN_PORTS)
     {
-        return result;
+
     }
 
     return result;
