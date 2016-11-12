@@ -22,6 +22,7 @@
 #include "sr_protocol.h"
 #include "sr_arpcache.h"
 #include "sr_utils.h"
+#include "sr_nat.h"
 
 
 /*---------------------------------------------------------------------
@@ -155,6 +156,8 @@ void ip_sanity_check(uint8_t *packet) {
 void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char *interface)
 {
     sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t));
+    struct sr_if *external_if = sr_get_interface(sr, DEFAULT_EXTERNAL_INTERFACE);
+    int ip_hdr_bytelen = ip_header->ip_hl * WORD_TO_BYTE;
 
     if (ip_header->ip_p == ip_protocol_icmp)
     {
@@ -163,18 +166,19 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
         /* Packet is from the internal interface */
         if (!strcmp(interface, (sr->nat)->internal_interface_name))
         {
-            sr_nat_mapping *mapping = sr_nat_lookup_internal(sr->nat, ip_header->ip_src, icmp_hdr->icmp_id, nat_mapping_icmp);
+            struct sr_nat_mapping *mapping = sr_nat_lookup_internal(sr->nat, ip_header->ip_src, icmp_hdr->icmp_id, nat_mapping_icmp);
+            uint32_t ip_ext = external_if->ip;
 
             /* No such mapping, insert it */
             if (!mapping)
             {
-                sr_nat_mapping *inserted = sr_nat_insert_mapping(sr->nat, ip_header->ip_src, icmp_hdr->icmp_id, nat_mapping_icmp);
+                struct sr_nat_mapping *inserted = sr_nat_insert_mapping(sr->nat, ip_header->ip_src, ip_ext, icmp_hdr->icmp_id, nat_mapping_icmp);
                 free(inserted);
                 return;
             }
 
             /* Rewrite outgoing packet */
-            ip_header->ip_src = sr_get_interface(sr, interface)->ip;
+            ip_header->ip_src = ip_ext;
             icmp_hdr->icmp_id = mapping->aux_ext;
             icmp_hdr->icmp_sum = 0;
             icmp_hdr->icmp_sum = cksum(icmp_hdr, ntohs(ip_header->ip_len) - ip_hdr_bytelen);
@@ -184,7 +188,7 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
 
         else
         {
-            sr_nat_mapping *mapping = sr_nat_lookup_external(struct sr_nat *nat, icmp_hdr->icmp_id, nat_mapping_icmp);
+            struct sr_nat_mapping *mapping = sr_nat_lookup_external(sr->nat, icmp_hdr->icmp_id, nat_mapping_icmp);
 
             /* No such mapping, drop it */
             if (!mapping)

@@ -6,19 +6,18 @@
 #include <time.h>
 #include <pthread.h>
 #include "sr_protocol.h"
-#include "sr_router.h"
 
 typedef enum {
-    tcp_state_listen, 
-    tcp_state_syn_sent, 
+    tcp_state_listen,
+    tcp_state_syn_sent,
     tcp_state_syn_received,
-    tcp_state_established, 
-    tcp_state_fin_wait_1, 
-    tcp_state_fin_wait_2, 
-    tcp_state_close_wait, 
-    tcp_state_closing, 
-    tcp_state_last_ack, 
-    tcp_state_time_wait, 
+    tcp_state_established,
+    tcp_state_fin_wait_1,
+    tcp_state_fin_wait_2,
+    tcp_state_close_wait,
+    tcp_state_closing,
+    tcp_state_last_ack,
+    tcp_state_time_wait,
     tcp_state_closed
 } sr_nat_tcp_state;
 
@@ -28,12 +27,12 @@ typedef enum {
   /* nat_mapping_udp, */
 } sr_nat_mapping_type;
 
-struct sr_nat_pending_syn 
+struct sr_nat_pending_syn
 {
   /* add TCP connection state data members here */
   time_t time_received;
   uint16_t aux_ext;
-  sr_ip_hdr_t *ip_hdr;
+  /* sr_ip_hdr_t *ip_hdr; */
   struct sr_nat_pending_syn *next;
 };
 typedef struct sr_nat_pending_syn sr_nat_pending_syn_t;
@@ -65,7 +64,7 @@ struct sr_nat {
   struct sr_nat_mapping *mappings;
   sr_nat_pending_syn_t *pending_syn;
   char *internal_interface_name;
-  
+
    /*Timeout*/
   time_t icmp_timeout;
   time_t tcp_established_timeout;
@@ -80,12 +79,12 @@ struct sr_nat {
 
 
 
-struct sr_nat_connection *create_connection(    uint32_t dst_ip, 
-                                                uint16_t dst_port, 
-                                                uint32_t fin_sent_sequence_number, 
-                                                uint32_t fin_received_sequence_number); 
+struct sr_nat_connection *create_connection(    uint32_t dst_ip,
+                                                uint16_t dst_port,
+                                                uint32_t fin_sent_sequence_number,
+                                                uint32_t fin_received_sequence_number);
 
-struct sr_if *get_external_interface(struct sr_instance *sr);
+/* struct sr_if *get_external_interface(struct sr_instance *sr); */
 int tcp_time_out_connection(struct sr_nat *nat, struct sr_nat_connection **head);
 void deleteConnection(struct sr_nat_connection **head, struct sr_nat_connection *n);
 int is_nat_timeout_tcp(struct sr_nat *nat, struct sr_nat_connection *connection_entry);
@@ -110,8 +109,8 @@ struct sr_nat_mapping *sr_nat_lookup_internal(struct sr_nat *nat,
 
 /* Insert a new mapping into the nat's mapping table.
    You must free the returned structure if it is not NULL. */
-struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_instance *sr,
-  uint32_t ip_int, uint16_t aux_int, sr_nat_mapping_type type);
+struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_nat *nat,
+  uint32_t ip_int, uint32_t ip_ext, uint16_t aux_int, sr_nat_mapping_type type);
 
 
 #endif

@@ -13,7 +13,7 @@
 #define DEFAULT_INTERNAL_INTERFACE "eth1"
 
 
-int sr_nat_init(struct sr_nat *nat, 
+int sr_nat_init(struct sr_nat *nat,
                 time_t icmp_timeout,
                 time_t tcp_established_timeout,
                 time_t tcp_transmission_timeout) { /* Initializes the nat */
@@ -37,7 +37,7 @@ int sr_nat_init(struct sr_nat *nat,
 
   nat->pending_syn = NULL;
   nat->mappings = NULL;
-  
+
   /* Initialize any variables here */
   nat->internal_interface_name = DEFAULT_INTERNAL_INTERFACE;
   nat->icmp_timeout = icmp_timeout;
@@ -47,7 +47,7 @@ int sr_nat_init(struct sr_nat *nat,
   return success;
 }
 
-/* 
+/*
  *  Returns 0 if there is no difference otherwise 1.
  */
 int is_nat_timeout_icmp(struct sr_nat *nat, struct sr_nat_mapping *mapping)
@@ -57,7 +57,7 @@ int is_nat_timeout_icmp(struct sr_nat *nat, struct sr_nat_mapping *mapping)
     return difftime(now, mapping->last_updated) < nat->icmp_timeout;
 }
 
-/* 
+/*
  *  Returns 0 if there is no difference otherwise 1.
  */
 int is_nat_timeout_tcp(struct sr_nat *nat, struct sr_nat_connection *connection_entry)
@@ -68,14 +68,14 @@ int is_nat_timeout_tcp(struct sr_nat *nat, struct sr_nat_connection *connection_
     int trans_timeout = difftime(now, connection_entry->last_updated) < nat->tcp_transmission_timeout;
     int established = connection_entry->state == tcp_state_established;
     int trasit = !established;
-    
+
     return (et_difference && established) || (trans_timeout && trasit);
 }
 
 int tcp_time_out_connection(struct sr_nat *nat, struct sr_nat_connection **head)
 {
     struct sr_nat_connection *current_connection = *head;
-    
+
     while (current_connection != NULL)
     {
 
@@ -100,19 +100,19 @@ void deleteConnection(struct sr_nat_connection **head, struct sr_nat_connection 
 {
     /* When node to be deleted is head node*/
     if(*head == n)
-    { 
+    {
         /* store address of current node */
         struct sr_nat_connection *temp = *head;
         *head = temp->next;
- 
+
         /* free memory */
         free(temp);
- 
+
         return;
     }
- 
+
     /* When it is not the first node, follow the normal deletion process*/
- 
+
     /* find the previous node */
     struct sr_nat_connection *prev = *head;
 
@@ -120,31 +120,31 @@ void deleteConnection(struct sr_nat_connection **head, struct sr_nat_connection 
     {
         prev = prev->next;
     }
-        
+
     /* Check if node really exists in Linked List */
     if(prev->next == NULL)
     {
         printf("\n the given node is not in Linked List\n");
         return;
     }
- 
+
     /* Remove node from Linked List */
     prev->next = prev->next->next;
- 
+
     /* Free memory */
     free(n);
 
-    return; 
+    return;
 }
 
 void tcp_time_out_mapping(struct sr_nat *nat, struct sr_nat_mapping **head)
 {
     struct sr_nat_mapping *current_mapping = *head;
-    
+
     while (current_mapping != NULL)
     {
 
-        if ((current_mapping->type == nat_mapping_icmp && is_nat_timeout_icmp(nat, current_mapping)) || 
+        if ((current_mapping->type == nat_mapping_icmp && is_nat_timeout_icmp(nat, current_mapping)) ||
             (current_mapping->type == nat_mapping_tcp && tcp_time_out_connection(nat, &current_mapping->conns)))
         {
            deleteMapping(head, current_mapping);
@@ -162,15 +162,15 @@ void deleteMapping(struct sr_nat_mapping **head, struct sr_nat_mapping *n)
         /* store address of current node */
         struct sr_nat_mapping *temp = *head;
         *head = temp->next;
- 
+
         /* free memory */
         free(temp);
- 
+
         return;
     }
- 
+
     /* When it is not the first node, follow the normal deletion process*/
- 
+
     /* find the previous node */
     struct sr_nat_mapping *prev = *head;
 
@@ -178,21 +178,21 @@ void deleteMapping(struct sr_nat_mapping **head, struct sr_nat_mapping *n)
     {
         prev = prev->next;
     }
-        
+
     /* Check if node really exists in Linked List */
     if(prev->next == NULL)
     {
         printf("\n Given node is not present in Linked List");
         return;
     }
- 
+
     /* Remove node from Linked List */
     prev->next = prev->next->next;
- 
+
     /* Free memory */
     free(n);
 
-    return; 
+    return;
 }
 
 
@@ -201,7 +201,7 @@ int sr_nat_destroy(struct sr_nat *nat) {  /* Destroys the nat (free memory) */
   pthread_mutex_lock(&(nat->lock));
 
   /* free nat memory here */
-    
+
     struct sr_nat_mapping *current_mapping = nat->mappings;
     struct sr_nat_mapping *temp_mapping;
 
@@ -216,7 +216,7 @@ int sr_nat_destroy(struct sr_nat *nat) {  /* Destroys the nat (free memory) */
             current_connection = current_connection->next;
             free(temp_connection);
         }
-        
+
         temp_mapping = current_mapping;
         current_mapping = current_mapping->next;
         free(temp_mapping);
@@ -230,10 +230,10 @@ int sr_nat_destroy(struct sr_nat *nat) {  /* Destroys the nat (free memory) */
 }
 
 void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
-    
+
     struct sr_nat *nat = (struct sr_nat *)nat_ptr;
-    
-    while (1) 
+
+    while (1)
     {
         sleep(1.0);
         pthread_mutex_lock(&(nat->lock));
@@ -243,12 +243,12 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
         /* handle periodic tasks here */
 
         tcp_time_out_mapping(nat, &nat->mappings);
-        
+
         /* Todo: NEED TO ADD TIMEOUT FOR PENDING SYNS */
 
         pthread_mutex_unlock(&(nat->lock));
     }
-    
+
     return NULL;
 }
 
@@ -269,7 +269,7 @@ struct sr_nat_mapping *sr_nat_lookup_external(struct sr_nat *nat,
         {
             copy = (struct sr_nat_mapping *) malloc(sizeof(struct sr_nat_mapping));
             memcpy(copy, current_entry, sizeof(struct sr_nat_mapping));
-            
+
             return copy;
         }
 
@@ -296,7 +296,7 @@ struct sr_nat_mapping *sr_nat_lookup_internal(struct sr_nat *nat,
         {
             copy = (struct sr_nat_mapping *) malloc(sizeof(struct sr_nat_mapping));
             memcpy(copy, current_entry, sizeof(struct sr_nat_mapping));
-            
+
             return copy;
         }
 
@@ -310,36 +310,39 @@ struct sr_nat_mapping *sr_nat_lookup_internal(struct sr_nat *nat,
 /* Insert a new mapping into the nat's mapping table.
    Actually returns a copy to the new mapping, for thread safety.
  */
-struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_instance *sr,
-  uint32_t ip_int, uint16_t aux_int, sr_nat_mapping_type type) {
-  
-    struct sr_nat *nat = sr->nat;
+struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_nat *nat,
+  uint32_t ip_int, uint32_t ip_ext, uint16_t aux_int, sr_nat_mapping_type type) {
+
     pthread_mutex_lock(&(nat->lock));
 
     /* handle insert here, create a mapping, and then return a copy of it */
-    struct sr_nat_mapping *copy = NULL;
-    struct sr_nat_mapping *mapping = nat->mappings;
-    struct sr_if *external_interface = get_external_interface(sr);
-      
+    struct sr_nat_mapping *mapping = malloc(sizeof(struct sr_nat_mapping *));
+    /* struct sr_if *external_interface = get_external_interface(sr); */
+
     /* Case it is tcp mapping */
+    mapping->type = type;                                     /* type */
     mapping->ip_int = ip_int;                                 /* internal ip addr */
-    mapping->ip_ext = external_interface->ip;                 /* external ip addr */
+    mapping->ip_ext = ip_ext;                                 /* external ip addr */
     mapping->aux_int = aux_int;                               /* internal port or icmp id */
     mapping->aux_ext = generate_port_number(ip_int, aux_int); /* external port or icmp id */
     time(&mapping->last_updated);                             /* use to timeout mappings */
     mapping->conns = NULL;                                    /* list of connections. null for ICMP */
-    mapping->next = NULL;
 
-    copy = (struct sr_nat_mapping *)malloc(sizeof(struct sr_nat_mapping));
+    mapping->next = nat->mappings;
+    nat->mappings = mapping;
+
+    struct sr_nat_mapping *copy = (struct sr_nat_mapping *)malloc(sizeof(struct sr_nat_mapping));
     memcpy(copy, mapping, sizeof(struct sr_nat_mapping));
+
     pthread_mutex_unlock(&(nat->lock));
+
     return copy;
 }
 
 /*combination of private and public*/
-struct sr_nat_connection *create_connection(   uint32_t dst_ip, 
-                                        uint16_t dst_port, 
-                                        uint32_t fin_sent_sequence_number, 
+struct sr_nat_connection *create_connection(   uint32_t dst_ip,
+                                        uint16_t dst_port,
+                                        uint32_t fin_sent_sequence_number,
                                         uint32_t fin_received_sequence_number)
 {
     struct sr_nat_connection *new_connection = (struct sr_nat_connection *)malloc(sizeof(struct sr_nat_connection));
@@ -351,7 +354,7 @@ struct sr_nat_connection *create_connection(   uint32_t dst_ip,
     }
 
     new_connection->dst_ip = dst_ip;
-    new_connection->dst_port = dst_port; 
+    new_connection->dst_port = dst_port;
     new_connection->fin_sent_sequence_number = fin_sent_sequence_number;
     new_connection->fin_received_sequence_number = fin_received_sequence_number;
     new_connection->state = tcp_state_established; /*DOUBLE CHECK THIS DECLARATION*/
@@ -361,7 +364,7 @@ struct sr_nat_connection *create_connection(   uint32_t dst_ip,
 
 /*
  * Returns a number between 1024 and MAX_PORT_NUMBER
- * ip_int: the internal ip address,  
+ * ip_int: the internal ip address,
  * aux_int: the internal port number
  */
 int generate_port_number(uint32_t ip_int, uint16_t aux_int)
@@ -376,7 +379,7 @@ int generate_port_number(uint32_t ip_int, uint16_t aux_int)
     return result;
 }
 
-
+/*
 struct sr_if* get_external_interface(struct sr_instance *sr)
 {
     struct sr_nat *nat = sr->nat;
@@ -393,6 +396,7 @@ struct sr_if* get_external_interface(struct sr_instance *sr)
 
         current_interface = current_interface->next;
     }
-    
+
     return NULL;
 }
+*/

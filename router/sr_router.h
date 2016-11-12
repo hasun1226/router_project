@@ -44,6 +44,7 @@
 #define IPV4 4
 #define WORD_TO_BYTE 4
 #define	IP_DF 0x4000
+#define DEFAULT_EXTERNAL_INTERFACE "eth2"
 
 /* forward declare */
 struct sr_if;
