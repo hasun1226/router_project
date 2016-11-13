@@ -413,25 +413,21 @@ void update_tcp_connection(struct sr_nat_mapping *mappings, uint32_t dst_ip, uin
     /* Update timestamp for entire mapping */
     time(&(mappings->last_updated));
 
-    struct sr_nat_connection *connection = mappings->conns;
+    struct sr_nat_connection *connection = contains_connection(mappings->conns, dst_ip, dst_port);
 
-    while(connection != NULL)
-    {  
-        if ((dst_ip == connection->dst_ip) && (dst_port == connection->dst_port)) 
+    if (connection != NULL)
+    {
+        time(&connection->last_updated);
+
+        if (incoming) 
         {
-            time(&connection->last_updated);
+             update_incoming_tcp_state(connection, tcp_header);
+        } 
 
-            if (incoming) 
-            {
-                update_incoming_tcp_state(connection, tcp_header);
-            } 
-
-            else 
-            {
-                update_outgoing_tcp_state(connection, tcp_header);
-            } 
-        }
-        connection = connection->next;
+        else if(!incoming)
+        {
+            update_outgoing_tcp_state(connection, tcp_header);
+        } 
     }
 
     if (connection == NULL) 
@@ -447,7 +443,7 @@ void update_tcp_connection(struct sr_nat_mapping *mappings, uint32_t dst_ip, uin
             init_incoming_tcp_state(connection, tcp_header);
         }
             
-        else
+        else if(!incoming)
         {
             init_outgoing_tcp_state(connection, tcp_header);
         }  
@@ -456,6 +452,25 @@ void update_tcp_connection(struct sr_nat_mapping *mappings, uint32_t dst_ip, uin
     time(&connection->last_updated);
 }
 
+/* 
+ * Returns the entry of the given connection otherwise null
+ *
+ */
+struct sr_nat_connection *contains_connection(struct sr_nat_connection *connections, uint32_t dst_ip, uint16_t dst_port)
+{
+    struct sr_nat_connection *current_connection = connections;
+
+    while(current_connection != NULL)
+    {  
+        if ((dst_ip == current_connection->dst_ip) && (dst_port == current_connection->dst_port)) 
+        {
+            return current_connection;
+        }
+        current_connection = current_connection->next;
+    }
+    
+    return NULL;
+}
 
 void update_outgoing_tcp_state(struct sr_nat_connection *connection, sr_tcp_hdr_t *tcp_header)
 {
@@ -569,10 +584,6 @@ void update_incoming_tcp_state(struct sr_nat_connection *connection, sr_tcp_hdr_
             {
                 init_incoming_tcp_state(connection, tcp_header);
             }
-            break;
-    
-        case tcp_state_syn_received_processing:
-
             break;
 
         case tcp_state_syn_sent:

@@ -84,7 +84,7 @@ struct sr_nat {
 
 
 struct sr_nat_connection *create_connection(uint32_t dst_ip, uint16_t dst_port);
-
+struct sr_nat_connection *contains_connection(struct sr_nat_connection *connections, uint32_t dst_ip, uint16_t dst_port);
 /* struct sr_if *get_external_interface(struct sr_instance *sr); */
 int tcp_time_out_connection(struct sr_nat *nat, struct sr_nat_connection **head);
 void deleteConnection(struct sr_nat_connection **head, struct sr_nat_connection *n);
