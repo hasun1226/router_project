@@ -289,13 +289,14 @@ struct sr_nat_mapping *sr_nat_lookup_internal(struct sr_nat *nat,
     pthread_mutex_lock(&(nat->lock));
 
     /* handle lookup here, malloc and assign to copy. */
-    struct sr_nat_mapping *copy = (struct sr_nat_mapping *) malloc(sizeof(struct sr_nat_mapping));
+    struct sr_nat_mapping *copy = NULL;
     struct sr_nat_mapping *current_entry = nat->mappings;
 
     while(current_entry != NULL)
     {
         if ((current_entry->ip_int == ip_int) && (current_entry->aux_int == aux_int))
         {
+            copy = (struct sr_nat_mapping *) malloc(sizeof(struct sr_nat_mapping));
             memcpy(copy, current_entry, sizeof(struct sr_nat_mapping));
 
             /* In case my understanding of port overloading is correct,
@@ -346,10 +347,7 @@ struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_nat *nat,
 }
 
 /*combination of private and public*/
-struct sr_nat_connection *create_connection(   uint32_t dst_ip,
-                                        uint16_t dst_port,
-                                        uint32_t fin_sent_sequence_number,
-                                        uint32_t fin_received_sequence_number)
+struct sr_nat_connection *create_connection(uint32_t dst_ip, uint16_t dst_port)
 {
     struct sr_nat_connection *new_connection = (struct sr_nat_connection *)malloc(sizeof(struct sr_nat_connection));
 
@@ -361,9 +359,9 @@ struct sr_nat_connection *create_connection(   uint32_t dst_ip,
 
     new_connection->dst_ip = dst_ip;
     new_connection->dst_port = dst_port;
-    new_connection->fin_sent_sequence_number = fin_sent_sequence_number;
-    new_connection->fin_received_sequence_number = fin_received_sequence_number;
-    new_connection->state = tcp_state_established; /*DOUBLE CHECK THIS DECLARATION*/
+    new_connection->fin_sent_sequence_number = 0;
+    new_connection->fin_received_sequence_number = 0;
+    new_connection->state = 0; /*DOUBLE CHECK THIS DECLARATION*/
 
     return new_connection;
 }
@@ -407,6 +405,288 @@ int is_unique_port_number(struct sr_nat_mapping *mappings, int port_number)
     return 1;
 }
 
+void update_tcp_connection(struct sr_nat_mapping *mappings, uint32_t dst_ip, uint16_t dst_port,
+                            sr_tcp_hdr_t *tcp_header, int incoming)
+{
+    assert(mappings->type == nat_mapping_tcp);
+
+    /* Update timestamp for entire mapping */
+    time(&(mappings->last_updated));
+
+    struct sr_nat_connection *connection = mappings->conns;
+
+    while(connection != NULL)
+    {  
+        if ((dst_ip == connection->dst_ip) && (dst_port == connection->dst_port)) 
+        {
+            time(&connection->last_updated);
+
+            if (incoming) 
+            {
+                update_incoming_tcp_state(connection, tcp_header);
+            } 
+
+            else 
+            {
+                update_outgoing_tcp_state(connection, tcp_header);
+            } 
+        }
+        connection = connection->next;
+    }
+
+    if (connection == NULL) 
+    {
+        /* create new tcp connection */
+        connection = create_connection(dst_ip, dst_port);
+        connection->next = mappings->conns;
+        mappings->conns = connection;
+
+        /* initialize connection state */
+        if (incoming)
+        {
+            init_incoming_tcp_state(connection, tcp_header);
+        }
+            
+        else
+        {
+            init_outgoing_tcp_state(connection, tcp_header);
+        }  
+    }
+
+    time(&connection->last_updated);
+}
+
+
+void update_outgoing_tcp_state(struct sr_nat_connection *connection, sr_tcp_hdr_t *tcp_header)
+{
+    uint32_t sequence_number = ntohl(tcp_header->seq);
+
+    if((tcp_header->flag & RST) == RST)
+    {
+        connection->state = tcp_state_closed;
+    }
+
+    sr_nat_tcp_state current_state = connection->state;
+
+    switch (current_state)
+    {
+        case tcp_state_closed: 
+            
+            if((tcp_header->flag & SYN) == SYN)
+            {
+                init_outgoing_tcp_state(connection, tcp_header);
+            }
+            break;
+    
+        case tcp_state_syn_received_processing:
+            
+            if ((tcp_header->flag & SYN) == SYN && (tcp_header->flag & ACK) == ACK) 
+            {
+                connection->state = tcp_state_syn_received;
+            }
+            break;
+
+        case tcp_state_established:
+            
+            if((tcp_header->flag & FIN) == FIN)
+            {
+                connection->state = tcp_state_fin_wait_1;
+                connection->fin_sent_sequence_number = sequence_number;
+            }
+            
+            if((tcp_header->flag & SYN) == SYN)
+            {
+                init_outgoing_tcp_state(connection, tcp_header);
+            }
+            break;
+
+        case tcp_state_close_wait:
+            
+            if ((tcp_header->flag & FIN) == FIN) 
+            {
+                connection->state = tcp_state_last_ack;
+                connection->fin_sent_sequence_number = sequence_number;
+            } 
+
+            if ((tcp_header->flag & SYN) == SYN) {
+                init_outgoing_tcp_state(connection, tcp_header);
+            }
+            break;
+    
+        case tcp_state_last_ack:
+            if ((tcp_header->flag & SYN) == SYN) 
+            {
+                init_outgoing_tcp_state(connection, tcp_header); 
+            }
+            break;
+
+        case tcp_state_time_wait:
+            
+            if ((tcp_header->flag & SYN) == SYN) 
+            {
+                init_outgoing_tcp_state(connection, tcp_header); 
+            }
+            break;
+
+        default:
+            break;
+    } 
+}
+
+void init_incoming_tcp_state(struct sr_nat_connection *connection, sr_tcp_hdr_t *tcp_header) 
+{
+
+    if ((tcp_header->flag & SYN) == SYN) 
+    {
+        connection->state = tcp_state_syn_received_processing;
+        connection->fin_sent_sequence_number = 0;
+        connection->fin_received_sequence_number = 0;
+    } 
+
+    else 
+    {
+        /* connection reset */
+        connection->state = tcp_state_closed;
+    }
+}
+void update_incoming_tcp_state(struct sr_nat_connection *connection, sr_tcp_hdr_t *tcp_header)
+{
+    uint32_t sequence_number = ntohl(tcp_header->seq);
+    uint32_t acknowledge_number = ntohl(tcp_header->ack);
+
+    if((tcp_header->flag & RST) == RST)
+    {
+        connection->state = tcp_state_closed;
+    }
+
+    sr_nat_tcp_state current_state = connection->state;
+
+    switch (current_state)
+    {
+        case tcp_state_closed: 
+            
+            if((tcp_header->flag & SYN) == SYN)
+            {
+                init_incoming_tcp_state(connection, tcp_header);
+            }
+            break;
+    
+        case tcp_state_syn_received_processing:
+
+            break;
+
+        case tcp_state_syn_sent:
+            
+            if ((tcp_header->flag & SYN) == SYN) 
+            {
+                
+                /* when SYN was received */
+                if ((tcp_header->flag & ACK) == ACK) {
+                    /* SYN+ACK */
+                    connection->state = tcp_state_established;
+                } 
+
+                else 
+                {
+                    /* simultaneous open */
+                    connection->state = tcp_state_syn_received;
+                }
+                break;
+            }
+
+        case tcp_state_syn_received:
+            
+            if ((tcp_header->flag & ACK) == ACK) 
+            {
+                /* SYN+ACK */
+                connection->state = tcp_state_established;
+            }
+            break; 
+
+        case tcp_state_established:
+            
+            if((tcp_header->flag & FIN) == FIN)
+            {
+                connection->state = tcp_state_close_wait;
+                connection->fin_received_sequence_number = sequence_number;
+            }
+            
+            if((tcp_header->flag & SYN) == SYN)
+            {
+                init_incoming_tcp_state(connection, tcp_header);
+            }
+            break;
+
+        case tcp_state_close_wait:
+            
+            if ((tcp_header->flag & FIN) == FIN) 
+            {
+                connection->state = tcp_state_last_ack;
+                connection->fin_sent_sequence_number = sequence_number;
+            } 
+
+            if ((tcp_header->flag & SYN) == SYN) {
+                init_outgoing_tcp_state(connection, tcp_header);
+            }
+            break;
+    
+        case tcp_state_fin_wait_1:
+
+            /* FIN or FIN+ACK */
+            if ((tcp_header->flag & FIN) == FIN) 
+            {
+                connection->state = tcp_state_time_wait;
+                connection->fin_received_sequence_number = sequence_number;
+            }
+
+            if ((tcp_header->flag & ACK) == ACK && (acknowledge_number > connection->fin_sent_sequence_number)) 
+            {  
+                /* FIN */
+                connection->state = tcp_state_fin_wait_2;
+            } 
+
+            if ((tcp_header->flag & SYN) == SYN) 
+            {
+                /* Reset connection */
+                init_incoming_tcp_state(connection, tcp_header); 
+            }
+            break;
+
+        case tcp_state_fin_wait_2:
+            
+            if ((tcp_header->flag & FIN) == FIN) 
+            {
+                connection->state = tcp_state_time_wait;
+                connection->fin_received_sequence_number = sequence_number; 
+            }
+
+            if ((tcp_header->flag & SYN) == SYN) 
+            {
+                /* Reset connection */
+                init_incoming_tcp_state(connection, tcp_header); 
+            }
+            break;
+
+        default:
+            break;
+    } 
+}
+
+void init_outgoing_tcp_state(struct sr_nat_connection *connection, sr_tcp_hdr_t *tcp_header) 
+{
+
+    if ((tcp_header->flag & SYN) == SYN) 
+    {
+        connection->state = tcp_state_syn_sent;
+        connection->fin_sent_sequence_number = 0;
+        connection->fin_received_sequence_number = 0;
+    } 
+    else 
+    {
+        /* connection reset */
+        connection->state = tcp_state_closed;
+    }
+}
 /*
 struct sr_if* get_external_interface(struct sr_instance *sr)
 {

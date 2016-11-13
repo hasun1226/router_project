@@ -12,6 +12,7 @@
 typedef enum {
     tcp_state_listen,
     tcp_state_syn_sent,
+    tcp_state_syn_received_processing,
     tcp_state_syn_received,
     tcp_state_established,
     tcp_state_fin_wait_1,
@@ -82,10 +83,7 @@ struct sr_nat {
 
 
 
-struct sr_nat_connection *create_connection(    uint32_t dst_ip,
-                                                uint16_t dst_port,
-                                                uint32_t fin_sent_sequence_number,
-                                                uint32_t fin_received_sequence_number);
+struct sr_nat_connection *create_connection(uint32_t dst_ip, uint16_t dst_port);
 
 /* struct sr_if *get_external_interface(struct sr_instance *sr); */
 int tcp_time_out_connection(struct sr_nat *nat, struct sr_nat_connection **head);
@@ -96,6 +94,16 @@ int generate_port_number(struct sr_nat_mapping *mappings, uint32_t ip_int, uint1
 int is_unique_port_number(struct sr_nat_mapping *mappings, int port_number);
 
 void tcp_time_out_mapping(struct sr_nat *nat, struct sr_nat_mapping **head);
+
+void update_tcp_connection(struct sr_nat_mapping *mappings, uint32_t dst_ip, uint16_t dst_port,
+                            sr_tcp_hdr_t *tcp_header, int incoming);
+
+void init_outgoing_tcp_state(struct sr_nat_connection *connection, sr_tcp_hdr_t *tcp_header);
+void update_outgoing_tcp_state(struct sr_nat_connection *connection, sr_tcp_hdr_t *tcp_header);
+
+void init_incoming_tcp_state(struct sr_nat_connection *connection, sr_tcp_hdr_t *tcp_header);
+void update_incoming_tcp_state(struct sr_nat_connection *connection, sr_tcp_hdr_t *tcp_header);
+
 void deleteMapping(struct sr_nat_mapping **head, struct sr_nat_mapping *n);
 
 int   sr_nat_destroy(struct sr_nat *nat);  /* Destroys the nat (free memory) */

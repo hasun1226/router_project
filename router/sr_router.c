@@ -240,6 +240,7 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
 
             /* Update time of the mapping */
             mapping->last_updated = time(NULL);
+            update_tcp_connection(mapping, ip_header->ip_dst, tcp_hdr->dst_port, tcp_hdr, 0); 
             free(mapping);
         }
 
@@ -254,6 +255,7 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
 
             /* Update time of the mapping */
             mapping->last_updated = time(NULL);
+            update_tcp_connection(mapping, ip_header->ip_src, tcp_hdr->src_port, tcp_hdr, 1); 
             free(mapping);
         }
     }
