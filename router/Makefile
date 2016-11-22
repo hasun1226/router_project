@@ -7,7 +7,7 @@
 #
 #------------------------------------------------------------------------------
 
-all : sr_nat
+all : sr
 
 CC = gcc
 
@@ -57,7 +57,7 @@ $(sr_DEPS) : .%.d : %.c
 
 -include $(sr_DEPS)	
 
-sr_nat : $(sr_OBJS)
+sr : $(sr_OBJS)
 	$(CC) $(CFLAGS) -o sr $(sr_OBJS) $(LIBS) 
 
 sr.purify : $(sr_OBJS)
