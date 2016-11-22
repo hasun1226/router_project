@@ -108,6 +108,46 @@ void print_hdr_ip(uint8_t *buf) {
   print_addr_ip_int(ntohl(iphdr->ip_dst));
 }
 
+void print_hdr_tcp(uint8_t *buf)
+{
+  sr_tcp_hdr_t *tcp_header = (sr_tcp_hdr_t *)buf;
+  fprintf(stderr, "TCP header:\n");
+  fprintf(stderr, "\tSource Port: %d\n", tcp_header->src_port);
+  fprintf(stderr, "\tDestination Port: %d\n", tcp_header->dst_port);
+  fprintf(stderr, "\tSequence Number: %d\n", tcp_header->seq);
+  fprintf(stderr, "\tAck Number: %d\n", tcp_header->ack);
+  fprintf(stderr, "\tFlag: %d\n", tcp_header->flag);
+
+  if ((tcp_header->flag & URG) == URG)
+  {
+    fprintf(stderr, "\tFlag Code: %s\n", "URG");
+  }
+  
+  if ((tcp_header->flag & ACK) == ACK)
+  {
+    fprintf(stderr, "\tFlag Code: %s\n", "ACK");
+  }
+  
+  if ((tcp_header->flag & PSH) == PSH)
+  {
+    fprintf(stderr, "\tFlag Code: %s\n", "PSH");
+  }
+  
+  if ((tcp_header->flag & SYN) == SYN)
+  {
+    fprintf(stderr, "\tFlag Code: %s\n", "SYN");
+  }
+
+  if ((tcp_header->flag & FIN) == FIN)
+  {
+    fprintf(stderr, "\tFlag Code: %s\n", "FIN");
+  }
+
+  fprintf(stderr, "\tWindow: %d\n", tcp_header->window);
+  fprintf(stderr, "\tchecksum: %d\n", tcp_header->tcp_sum);
+  fprintf(stderr, "\tUrgent: %d\n", tcp_header->urgent);
+}
+
 /* Prints out ICMP header fields */
 void print_hdr_icmp(uint8_t *buf) {
   sr_icmp_hdr_t *icmp_hdr = (sr_icmp_hdr_t *)(buf);
@@ -169,6 +209,20 @@ void print_hdrs(uint8_t *buf, uint32_t length) {
         fprintf(stderr, "Failed to print ICMP header, insufficient length\n");
       else
         print_hdr_icmp(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+    }
+
+    /* TCP */
+    if (ip_proto == ip_protocol_tcp)
+    {
+      minlength += sizeof(sr_tcp_hdr_t);
+      if (length < minlength)
+      {
+        fprintf(stderr, "Failed to print TCP header, insufficient length\n");
+      }
+      else
+      {
+        print_hdr_tcp(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+      }
     }
   }
   else if (ethtype == ethertype_arp) { /* ARP */
