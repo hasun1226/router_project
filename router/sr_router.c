@@ -100,7 +100,7 @@ void sr_handlepacket(struct sr_instance* sr,
 
   /* The packet is an IP packet*/
   if (frame_type == ethertype_ip) {
-      if (!ip_sanity_check(packet)) return;
+      ip_sanity_check(packet);
       if (!sr->nat_status) handle_ip(sr, packet, len, out_interface);
       else nat_process(sr, packet, len, interface);
   }
@@ -124,7 +124,7 @@ void sr_handlepacket(struct sr_instance* sr,
 
 
 /* Do sanity check on IP packet. */
-int ip_sanity_check(uint8_t *packet) {
+void ip_sanity_check(uint8_t *packet) {
     sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t));
     int ip_hdr_bytelen = ip_header->ip_hl * WORD_TO_BYTE;
     uint16_t ip_sum_copy = ip_header->ip_sum;
@@ -133,31 +133,11 @@ int ip_sanity_check(uint8_t *packet) {
     if((ip_header->ip_v != 4) || (ip_header->ip_hl < 5) || (ip_sum_copy != cksum(ip_header, ip_hdr_bytelen)))
     {
         fprintf(stderr,"The ip_header is not valid\n");
-        return 0;
+        return;
     } /* end Sanity check for IP header */
-
-    if (ip_header->ip_p == ip_protocol_icmp)
-    {
-        sr_icmp_hdr_t *icmp_hdr = (sr_icmp_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-        uint16_t icmp_sum_copy = icmp_hdr->icmp_sum;
-        icmp_hdr->icmp_sum = 0;
-
-        if (icmp_hdr->icmp_type != ICMP_ECHO || icmp_hdr->icmp_type != ICMP_ECHO_REPLY ||
-            icmp_sum_copy != cksum(icmp_hdr, ntohs(ip_header->ip_len) - ip_hdr_bytelen)) return 0;
-
-        icmp_hdr->icmp_sum = icmp_sum_copy;
-    } /* end Sanity check for ICMP header */
-
-    else if (ip_header->ip_p == ip_protocol_tcp)
-    {
-        sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-        if (tcp_hdr->tcp_sum != tcp_cksum(packet)) return 0;
-
-    } /* end Sanity check for TCP header */
 
     /* Recover the ip_sum. */
     ip_header->ip_sum = ip_sum_copy;
-    return 1;
 }
 
 
@@ -209,7 +189,18 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
     if (ip_header->ip_p == ip_protocol_icmp)
     {
         sr_icmp_hdr_t *icmp_hdr = (sr_icmp_hdr_t *) (buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+        uint16_t icmp_sum_copy = icmp_hdr->icmp_sum;
         icmp_hdr->icmp_sum = 0;
+
+        /* Sanity check on ICMP header */
+        if (icmp_hdr->icmp_type != ICMP_ECHO || icmp_hdr->icmp_type != ICMP_ECHO_REPLY ||
+            icmp_sum_copy != cksum(icmp_hdr, ntohs(ip_header->ip_len) - ip_hdr_bytelen))
+            {
+                fprintf(stderr, "NAT process: ICMP header sanity check failed\n");
+                return;
+            }
+
+        icmp_hdr->icmp_sum = icmp_sum_copy;
 
         /* Packet is from the internal interface */
         if (!strcmp(interface, (sr->nat)->internal_interface_name))
@@ -232,14 +223,18 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
             check_and_send(sr, buf, len, (sr->nat)->internal_interface_name);
         }
 
+        /* Packet is from the external interface */
         else
         {
             struct sr_nat_mapping *mapping = sr_nat_lookup_external(sr->nat, icmp_hdr->icmp_id, nat_mapping_icmp);
 
-            /* No such mapping, drop it? send ICMP echo reply? send ICMP Port Unreachable? */
+            /*
+             * No such mapping, drop it? send ICMP echo reply? send ICMP Port Unreachable? For now, we assume ICMP echo reply
+             * Piazza post says "if no mapping is found, then you can safely assume this ping request is targeted at the router itself"
+             */
             if (!mapping)
             {
-                /* sr_send_icmp_reply(sr, packet, len, sr_get_interface(sr, interface)->ip); */
+                sr_send_icmp_reply(sr, packet, len, sr_get_interface(sr, interface));
                 /* sr_send_icmp_t3(sr, ICMP_PORT_UNREACHABLE, packet, len, sr_get_interface(sr, interface)); */
                 return;
             }
@@ -262,7 +257,14 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
     {
         sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t *) (buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
 
-        /* Packet is outbound insert or lookup mapping */
+        /* Sanity check on TCP header */
+        if (tcp_hdr->tcp_sum != tcp_cksum(buf))
+        {
+            fprintf(stderr, "NAT process: TCP header sanity check failed\n");
+            return;
+        }
+
+        /* Packet is outbound(from the internal interface) insert or lookup mapping */
         if (!strcmp(interface, (sr->nat)->internal_interface_name))
         {
             struct sr_nat_mapping *mapping = sr_nat_lookup_internal(sr->nat, ip_header->ip_src, tcp_hdr->src_port, nat_mapping_tcp);
@@ -282,6 +284,7 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
             check_and_send(sr, buf, len, (sr->nat)->internal_interface_name);
         }
 
+        /* Packet is from the external interface */
         else
         {
             struct sr_nat_mapping *mapping = sr_nat_lookup_external(sr->nat, tcp_hdr->dst_port, nat_mapping_tcp);
