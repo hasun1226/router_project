@@ -124,7 +124,7 @@ void sr_handlepacket(struct sr_instance* sr,
 
 
 /* Do sanity check on IP packet. */
-bool ip_sanity_check(uint8_t *packet) {
+int ip_sanity_check(uint8_t *packet) {
     sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t));
     int ip_hdr_bytelen = ip_header->ip_hl * WORD_TO_BYTE;
     uint16_t ip_sum_copy = ip_header->ip_sum;
@@ -133,7 +133,7 @@ bool ip_sanity_check(uint8_t *packet) {
     if((ip_header->ip_v != 4) || (ip_header->ip_hl < 5) || (ip_sum_copy != cksum(ip_header, ip_hdr_bytelen)))
     {
         fprintf(stderr,"The ip_header is not valid\n");
-        return false;
+        return 0;
     } /* end Sanity check for IP header */
 
     if (ip_header->ip_p == ip_protocol_icmp)
@@ -143,7 +143,7 @@ bool ip_sanity_check(uint8_t *packet) {
         icmp_hdr->icmp_sum = 0;
 
         if (icmp_hdr->icmp_type != ICMP_ECHO || icmp_hdr->icmp_type != ICMP_ECHO_REPLY ||
-            icmp_sum_copy != cksum(icmp_hdr, ntohs(ip_header->ip_len) - ip_hdr_bytelen)) return false;
+            icmp_sum_copy != cksum(icmp_hdr, ntohs(ip_header->ip_len) - ip_hdr_bytelen)) return 0;
 
         icmp_hdr->icmp_sum = icmp_sum_copy;
     } /* end Sanity check for ICMP header */
@@ -151,13 +151,13 @@ bool ip_sanity_check(uint8_t *packet) {
     else if (ip_header->ip_p == ip_protocol_tcp)
     {
         sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-        if (tcp_hdr->tcp_sum != tcp_cksum(packet) return false;
+        if (tcp_hdr->tcp_sum != tcp_cksum(packet)) return 0;
 
     } /* end Sanity check for TCP header */
 
     /* Recover the ip_sum. */
     ip_header->ip_sum = ip_sum_copy;
-    return true;
+    return 1;
 }
 
 
@@ -166,7 +166,7 @@ uint16_t tcp_cksum(uint8_t *packet) {
     sr_ip_hdr_t *ip_hdr = (sr_ip_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t));
     uint16_t tcp_len = ntohs(ip_hdr->ip_len) - ip_hdr->ip_hl * WORD_TO_BYTE;
 
-    uint8_t *data = malloc (sizeof(pseudo_tcp_hdr) + tcp_len);
+    uint8_t *data = malloc (sizeof(pseudo_tcp_hdr_t) + tcp_len);
     pseudo_tcp_hdr_t *pseudo_tcp = (pseudo_tcp_hdr_t *) data;
 
     pseudo_tcp->src_add = ip_hdr->ip_src;
