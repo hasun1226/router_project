@@ -90,7 +90,8 @@ void sr_init(struct sr_instance*,
              time_t tcp_established_timeout,
              time_t tcp_transmission_timeout);
 void sr_handlepacket(struct sr_instance* , uint8_t * , unsigned int , char* );
-void ip_sanity_check(uint8_t *packet);
+bool ip_sanity_check(uint8_t *packet);
+uint16_t tcp_cksum(uint8_t *packet);
 void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char *interface);
 void handle_ip(struct sr_instance *sr, uint8_t *packet, unsigned int len, struct sr_if *out_interface);
 void handle_arp_reply(struct sr_instance *sr, uint8_t *packet, struct sr_if *out_interface);

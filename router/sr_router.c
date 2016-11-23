@@ -100,7 +100,7 @@ void sr_handlepacket(struct sr_instance* sr,
 
   /* The packet is an IP packet*/
   if (frame_type == ethertype_ip) {
-      ip_sanity_check(packet);
+      if (!ip_sanity_check(packet)) return;
       if (!sr->nat_status) handle_ip(sr, packet, len, out_interface);
       else nat_process(sr, packet, len, interface);
   }
@@ -123,36 +123,71 @@ void sr_handlepacket(struct sr_instance* sr,
 }/* end sr_ForwardPacket */
 
 
-/* Do sanity check on IP header. */
-void ip_sanity_check(uint8_t *packet) {
+/* Do sanity check on IP packet. */
+bool ip_sanity_check(uint8_t *packet) {
     sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t));
+    int ip_hdr_bytelen = ip_header->ip_hl * WORD_TO_BYTE;
     uint16_t ip_sum_copy = ip_header->ip_sum;
     ip_header->ip_sum = 0;
 
-    if((ip_header->ip_v != 4) || (ip_header->ip_hl < 5) ||
-       (ip_sum_copy != cksum(ip_header, ip_header->ip_hl * WORD_TO_BYTE)))
+    if((ip_header->ip_v != 4) || (ip_header->ip_hl < 5) || (ip_sum_copy != cksum(ip_header, ip_hdr_bytelen)))
     {
         fprintf(stderr,"The ip_header is not valid\n");
-        return;
-    } /* end Sanity check */
+        return false;
+    } /* end Sanity check for IP header */
+
+    if (ip_header->ip_p == ip_protocol_icmp)
+    {
+        sr_icmp_hdr_t *icmp_hdr = (sr_icmp_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+        uint16_t icmp_sum_copy = icmp_hdr->icmp_sum;
+        icmp_hdr->icmp_sum = 0;
+
+        if (icmp_hdr->icmp_type != ICMP_ECHO || icmp_hdr->icmp_type != ICMP_ECHO_REPLY ||
+            icmp_sum_copy != cksum(icmp_hdr, ntohs(ip_header->ip_len) - ip_hdr_bytelen)) return false;
+
+        icmp_hdr->icmp_sum = icmp_sum_copy;
+    } /* end Sanity check for ICMP header */
+
+    else if (ip_header->ip_p == ip_protocol_tcp)
+    {
+        sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+        if (tcp_hdr->tcp_sum != tcp_cksum(packet) return false;
+
+    } /* end Sanity check for TCP header */
 
     /* Recover the ip_sum. */
     ip_header->ip_sum = ip_sum_copy;
+    return true;
+}
+
+
+/* Calculate checksum for TCP header */
+uint16_t tcp_cksum(uint8_t *packet) {
+    sr_ip_hdr_t *ip_hdr = (sr_ip_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t));
+    uint16_t tcp_len = ntohs(ip_hdr->ip_len) - ip_hdr->ip_hl * WORD_TO_BYTE;
+
+    uint8_t *data = malloc (sizeof(pseudo_tcp_hdr) + tcp_len);
+    pseudo_tcp_hdr_t *pseudo_tcp = (pseudo_tcp_hdr_t *) data;
+
+    pseudo_tcp->src_add = ip_hdr->ip_src;
+    pseudo_tcp->dst_add = ip_hdr->ip_dst;
+    pseudo_tcp->reserved = 0x0;
+    pseudo_tcp->ip_p = ip_protocol_tcp;
+    pseudo_tcp->length = htons(tcp_len);
+
+    sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+    memcpy(data + sizeof(pseudo_tcp_hdr_t), tcp_hdr, tcp_len);
+    sr_tcp_hdr_t *ck_tcp_hdr = (sr_tcp_hdr_t *) (data + sizeof(pseudo_tcp_hdr_t));
+    ck_tcp_hdr->tcp_sum = 0;
+
+    uint16_t result = cksum(data, sizeof(pseudo_tcp_hdr_t) + tcp_len);
+    free(data);
+    return result;
 }
 
 
 /*
- * < Pseudocode >
- * Check if packet is ICMP or TCP
- * If packet is outbound:
- *   insert or lookup unique mapping
- * else:
- *   if no mapping and not a SYN (for simultaneous open):
- *     drop packet
- * Rewrite IP src(dst) for outgoing (incoming) packets
- * Rewrite ICMP id or TCP port
- * Update relevant checksums
- * Route packet
+ * Handle the IP packet with Network Address Translation protocol
  */
 void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char *interface)
 {
@@ -169,12 +204,12 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
 
     sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) (buf + sizeof(sr_ethernet_hdr_t));
     int ip_hdr_bytelen = ip_header->ip_hl * WORD_TO_BYTE;
+    ip_header->ip_sum = 0;
 
     if (ip_header->ip_p == ip_protocol_icmp)
     {
         sr_icmp_hdr_t *icmp_hdr = (sr_icmp_hdr_t *) (buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-
-        if (icmp_hdr->icmp_type != ICMP_ECHO || icmp_hdr->icmp_type != ICMP_ECHO_REPLY) return;
+        icmp_hdr->icmp_sum = 0;
 
         /* Packet is from the internal interface */
         if (!strcmp(interface, (sr->nat)->internal_interface_name))
@@ -183,39 +218,42 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
 
             /* No such mapping, insert it */
             if (!mapping)
-            {
                 mapping = sr_nat_insert_mapping(sr->nat, ip_header->ip_src, icmp_hdr->icmp_id, nat_mapping_icmp);
-            }
 
             /* Rewrite outgoing packet */
             ip_header->ip_src = sr_get_interface(sr, DEFAULT_EXTERNAL_INTERFACE)->ip;
             icmp_hdr->icmp_id = mapping->aux_ext;
-            icmp_hdr->icmp_sum = 0;
             icmp_hdr->icmp_sum = cksum(icmp_hdr, ntohs(ip_header->ip_len) - ip_hdr_bytelen);
+            ip_header->ip_sum = cksum(ip_header, ip_hdr_bytelen);
 
             /* Update time of the mapping */
             mapping->last_updated = time(NULL);
             free(mapping);
-            check_and_send(sr, buf, len, DEFAULT_EXTERNAL_INTERFACE);
+            check_and_send(sr, buf, len, (sr->nat)->internal_interface_name);
         }
 
         else
         {
             struct sr_nat_mapping *mapping = sr_nat_lookup_external(sr->nat, icmp_hdr->icmp_id, nat_mapping_icmp);
 
-            /* No such mapping, drop it */
-            if (!mapping) return;
+            /* No such mapping, drop it? send ICMP echo reply? send ICMP Port Unreachable? */
+            if (!mapping)
+            {
+                /* sr_send_icmp_reply(sr, packet, len, sr_get_interface(sr, interface)->ip); */
+                /* sr_send_icmp_t3(sr, ICMP_PORT_UNREACHABLE, packet, len, sr_get_interface(sr, interface)); */
+                return;
+            }
 
             /* Rewrite the packet going to internal interface */
             ip_header->ip_dst = mapping->ip_int;
             icmp_hdr->icmp_id = mapping->aux_int;
-            icmp_hdr->icmp_sum = 0;
             icmp_hdr->icmp_sum = cksum(icmp_hdr, ntohs(ip_header->ip_len) - ip_hdr_bytelen);
+            ip_header->ip_sum = cksum(ip_header, ip_hdr_bytelen);
 
             /* Update time of the mapping */
             mapping->last_updated = time(NULL);
             free(mapping);
-            check_and_send(sr, buf, len, (sr->nat)->internal_interface_name);
+            check_and_send(sr, buf, len, DEFAULT_EXTERNAL_INTERFACE);
         }
 
     }
@@ -230,33 +268,37 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
             struct sr_nat_mapping *mapping = sr_nat_lookup_internal(sr->nat, ip_header->ip_src, tcp_hdr->src_port, nat_mapping_tcp);
 
             if (!mapping)
-            {
                 mapping = sr_nat_insert_mapping(sr->nat, ip_header->ip_src, tcp_hdr->src_port, nat_mapping_tcp);
-                mapping->ip_ext = ip_header->ip_dst;
-                mapping->aux_ext = tcp_hdr->dst_port;
-            }
 
-            /* Connection for TCP: mapping->conn */
+            /* Rewrite outgoing packet */
+            ip_header->ip_src = sr_get_interface(sr, DEFAULT_EXTERNAL_INTERFACE)->ip;
+            tcp_hdr->src_port = mapping->aux_ext;
+            tcp_hdr->tcp_sum = tcp_cksum(buf);
+            ip_header->ip_sum = cksum(ip_header, ip_hdr_bytelen);
 
             /* Update time of the mapping */
-            mapping->last_updated = time(NULL);
-            update_tcp_connection(mapping, ip_header->ip_dst, tcp_hdr->dst_port, tcp_hdr, 0); 
+            update_tcp_connection(mapping, ip_header->ip_dst, tcp_hdr->dst_port, tcp_hdr, 0);
             free(mapping);
+            check_and_send(sr, buf, len, (sr->nat)->internal_interface_name);
         }
 
         else
         {
             struct sr_nat_mapping *mapping = sr_nat_lookup_external(sr->nat, tcp_hdr->dst_port, nat_mapping_tcp);
 
-            /* No such mapping and not a SYN, drop it */
+            /* No such mapping and not a SYN(for simultaneous open?), drop it */
             if (tcp_hdr->flag != SYN && mapping == NULL) return;
 
-            /* Connection for TCP: mapping->conn */
+            /* Rewrite incoming packet */
+            ip_header->ip_dst = mapping->ip_int;
+            tcp_hdr->dst_port = mapping->aux_int;
+            tcp_hdr->tcp_sum = tcp_cksum(buf);
+            ip_header->ip_sum = cksum(ip_header, ip_hdr_bytelen);
 
             /* Update time of the mapping */
-            mapping->last_updated = time(NULL);
-            update_tcp_connection(mapping, ip_header->ip_src, tcp_hdr->src_port, tcp_hdr, 1); 
+            update_tcp_connection(mapping, ip_header->ip_src, tcp_hdr->src_port, tcp_hdr, 1);
             free(mapping);
+            check_and_send(sr, buf, len, DEFAULT_EXTERNAL_INTERFACE);
         }
     }
 }

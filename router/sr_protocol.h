@@ -128,6 +128,15 @@ enum sr_tcp_flag {
   FIN = 0x01
 };
 
+/* Structure of a TCP pseudo header, for checksum calculation */
+struct pseudo_tcp_hdr {
+    uint32_t src_add, dst_add;       /* source, dest address from ip header */
+    uint8_t reserved;                /* reserved */
+    uint8_t ip_p;                	 /* protocol */
+    uint16_t length;                 /* tcp length */
+} __attribute__ ((packed));
+typedef struct pseudo_tcp_hdr pseudo_tcp_hdr_t;
+
 
 /*
  * Structure of an internet header, naked of options.
