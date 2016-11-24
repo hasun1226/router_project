@@ -187,9 +187,9 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
         uint16_t icmp_sum_copy = icmp_hdr->icmp_sum;
 
         /* Sanity check on ICMP header */
-        if (icmp_hdr->icmp_type != ICMP_ECHO || icmp_hdr->icmp_type != ICMP_ECHO_REPLY) {
-            fprintf(stderr, "NOT ECHO\n");
-            return;
+        if (icmp_hdr->icmp_type != ICMP_ECHO && icmp_hdr->icmp_type != ICMP_ECHO_REPLY) {
+	    fprintf(stderr, "NOT ECHO and NOT ECHO_REPLY\n");
+	    return;
         }
 
         icmp_hdr->icmp_sum = 0;
