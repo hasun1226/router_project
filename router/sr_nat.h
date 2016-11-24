@@ -66,7 +66,9 @@ struct sr_nat {
   /* add any fields here */
   struct sr_nat_mapping *mappings;
   sr_nat_pending_syn_t *pending_syn;
-  char *internal_interface_name;
+  char *int_if_name;
+  char *ext_if_name;
+  struct sr_if *int_if;
   struct sr_if *ext_if;
 
    /*Timeout*/

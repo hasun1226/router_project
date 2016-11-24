@@ -7,14 +7,14 @@
 #include <string.h>
 #include "sr_nat.h"
 #include "sr_if.h"
+#include "sr_utils.h"
 
 #define MAX_PORT_NUMBER 65535
 #define TOTAL_WELL_KNOWN_PORTS 1024
 #define DEFAULT_INTERNAL_INTERFACE "eth1"
-
+#define DEFAULT_EXTERNAL_INTERFACE "eth2"
 
 int sr_nat_init(struct sr_nat *nat,
-                struct sr_if *ext_if,
                 time_t icmp_timeout,
                 time_t tcp_established_timeout,
                 time_t tcp_transmission_timeout) { /* Initializes the nat */
@@ -40,8 +40,8 @@ int sr_nat_init(struct sr_nat *nat,
   nat->mappings = NULL;
 
   /* Initialize any variables here */
-  nat->internal_interface_name = DEFAULT_INTERNAL_INTERFACE;
-  nat->ext_if = ext_if;
+  nat->int_if_name = DEFAULT_INTERNAL_INTERFACE;
+  nat->ext_if_name = DEFAULT_EXTERNAL_INTERFACE;
   nat->icmp_timeout = icmp_timeout;
   nat->tcp_established_timeout = tcp_established_timeout;
   nat->tcp_transmission_timeout = tcp_transmission_timeout;
@@ -321,17 +321,29 @@ struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_nat *nat,
 
     pthread_mutex_lock(&(nat->lock));
 
+    struct sr_if* ext = nat->ext_if;
+    sr_print_if(ext);
+
     /* handle insert here, create a mapping, and then return a copy of it */
     struct sr_nat_mapping *mapping = malloc(sizeof(struct sr_nat_mapping *));
-    struct sr_if *external_interface = nat->ext_if;
-    uint16_t aux_ext = generate_port_number(nat->mappings, ip_int, aux_int);
+/*    struct sr_if *external_interface = nat->ext_if; */
 
     /* Case it is tcp mapping */
     mapping->type = type;                                     /* type */
+    printf("Type is nat_mapping_icmp: %d\n", type == nat_mapping_icmp);
+
     mapping->ip_int = ip_int;                                 /* internal ip addr */
-    mapping->ip_ext = external_interface->ip;                 /* external ip addr */
+print_addr_ip_int(ntohl(ip_int));
+
+    mapping->ip_ext = ext->ip;                                /* external ip addr */
+print_addr_ip_int(ntohl(mapping->ip_ext));
+
     mapping->aux_int = aux_int;                               /* internal port or icmp id */
-    mapping->aux_ext = aux_ext;                               /* external port or icmp id */
+printf("%d\n", aux_int);
+
+    mapping->aux_ext = generate_port_number(nat->mappings, ip_int, aux_int);                               /* external port or icmp id */
+printf("%d\n", mapping->aux_ext);
+
     time(&mapping->last_updated);                             /* use to timeout mappings */
     mapping->conns = NULL;                                    /* list of connections. null for ICMP */
 
@@ -375,13 +387,28 @@ struct sr_nat_connection *create_connection(uint32_t dst_ip, uint16_t dst_port)
  */
 int generate_port_number(struct sr_nat_mapping *mappings, uint32_t ip_int, uint16_t aux_int)
 {
-    int result = ip_int + aux_int + rand() % MAX_PORT_NUMBER;
 
-    while (result  < TOTAL_WELL_KNOWN_PORTS || result > MAX_PORT_NUMBER || !is_unique_port_number(mappings, result))
+    int divisor = RAND_MAX/(MAX_PORT_NUMBER+1);
+    int retval;
+
+    do { 
+        retval = rand() / divisor;
+    } while (retval > MAX_PORT_NUMBER);
+
+    int result = retval;
+
+printf("initial Port number: %d\n", result);
+printf("result smaller than 1024: %d\n", result < TOTAL_WELL_KNOWN_PORTS);
+printf("result bigger than max_port_number: %d\n", result > MAX_PORT_NUMBER);
+printf("is_unique_port_number: %d\n", is_unique_port_number(mappings, result));
+
+    while ((result  < TOTAL_WELL_KNOWN_PORTS) || (result > MAX_PORT_NUMBER) || !is_unique_port_number(mappings, result))
     {
+	printf("inside while loop\n");
         result = ip_int + aux_int + rand() % MAX_PORT_NUMBER;
     }
 
+printf("final Port number: %d\n", result);
     return result;
 }
 

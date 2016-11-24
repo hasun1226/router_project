@@ -55,13 +55,10 @@ void sr_init( struct sr_instance* sr,
 
     /* Add initialization code here! */
 
-    /* sr->nat_status = nat_status; */
-
     if (sr->nat_status)
     {
-        struct sr_if *external_if = sr_get_interface(sr, DEFAULT_EXTERNAL_INTERFACE);
         sr->nat = (struct sr_nat *)malloc(sizeof(struct sr_nat));
-        sr_nat_init(sr->nat, external_if, icmp_timeout, tcp_established_timeout, tcp_transmission_timeout);
+        sr_nat_init(sr->nat, icmp_timeout, tcp_established_timeout, tcp_transmission_timeout);
     }
 
 } /* -- sr_init -- */
@@ -139,8 +136,6 @@ void ip_sanity_check(uint8_t *packet) {
     /* Recover the ip_sum. */
     ip_header->ip_sum = ip_sum_copy;
 }
-
-
 /* Calculate checksum for TCP header */
 uint16_t tcp_cksum(uint8_t *packet) {
     sr_ip_hdr_t *ip_hdr = (sr_ip_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t));
@@ -188,11 +183,12 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
 
     if (ip_header->ip_p == ip_protocol_icmp)
     {
+	fprintf(stderr, "NAT process: icmp packet received\n");
         sr_icmp_hdr_t *icmp_hdr = (sr_icmp_hdr_t *) (buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-        uint16_t icmp_sum_copy = icmp_hdr->icmp_sum;
+/*        uint16_t icmp_sum_copy = icmp_hdr->icmp_sum; */
         icmp_hdr->icmp_sum = 0;
 
-        /* Sanity check on ICMP header */
+        /* Sanity check on ICMP header
         if (icmp_hdr->icmp_type != ICMP_ECHO || icmp_hdr->icmp_type != ICMP_ECHO_REPLY ||
             icmp_sum_copy != cksum(icmp_hdr, ntohs(ip_header->ip_len) - ip_hdr_bytelen))
             {
@@ -200,27 +196,35 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
                 return;
             }
 
-        icmp_hdr->icmp_sum = icmp_sum_copy;
+        icmp_hdr->icmp_sum = icmp_sum_copy; */
 
         /* Packet is from the internal interface */
-        if (!strcmp(interface, (sr->nat)->internal_interface_name))
+        if (!strcmp(interface, (sr->nat)->int_if_name))
         {
-            struct sr_nat_mapping *mapping = sr_nat_lookup_internal(sr->nat, ip_header->ip_src, icmp_hdr->icmp_id, nat_mapping_icmp);
+	    fprintf(stderr, "Packet received at internal interface\n");
+	    print_hdrs(buf, len);
+	    struct sr_nat_mapping *mapping = sr_nat_lookup_internal(sr->nat, ip_header->ip_src, icmp_hdr->icmp_id, nat_mapping_icmp);
 
             /* No such mapping, insert it */
-            if (!mapping)
+            if (!mapping) {
+		printf("No mapping\n");
                 mapping = sr_nat_insert_mapping(sr->nat, ip_header->ip_src, icmp_hdr->icmp_id, nat_mapping_icmp);
+	    }
 
+printf("Rewriting\n");
             /* Rewrite outgoing packet */
             ip_header->ip_src = sr_get_interface(sr, DEFAULT_EXTERNAL_INTERFACE)->ip;
             icmp_hdr->icmp_id = mapping->aux_ext;
             icmp_hdr->icmp_sum = cksum(icmp_hdr, ntohs(ip_header->ip_len) - ip_hdr_bytelen);
             ip_header->ip_sum = cksum(ip_header, ip_hdr_bytelen);
 
+print_hdrs(buf, len);
+	    printf("Finished Rewriting\n");
+
             /* Update time of the mapping */
             mapping->last_updated = time(NULL);
             free(mapping);
-            check_and_send(sr, buf, len, (sr->nat)->internal_interface_name);
+            check_and_send(sr, buf, len, (sr->nat)->int_if_name);
         }
 
         /* Packet is from the external interface */
@@ -265,7 +269,7 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
         }
 
         /* Packet is outbound(from the internal interface) insert or lookup mapping */
-        if (!strcmp(interface, (sr->nat)->internal_interface_name))
+        if (!strcmp(interface, (sr->nat)->int_if_name))
         {
             struct sr_nat_mapping *mapping = sr_nat_lookup_internal(sr->nat, ip_header->ip_src, tcp_hdr->src_port, nat_mapping_tcp);
 
@@ -281,7 +285,7 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
             /* Update time of the mapping */
             update_tcp_connection(mapping, ip_header->ip_dst, tcp_hdr->dst_port, tcp_hdr, 0);
             free(mapping);
-            check_and_send(sr, buf, len, (sr->nat)->internal_interface_name);
+            check_and_send(sr, buf, len, (sr->nat)->int_if_name);
         }
 
         /* Packet is from the external interface */

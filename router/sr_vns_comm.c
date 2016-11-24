@@ -38,6 +38,7 @@
 
 #include "sr_dumper.h"
 #include "sr_router.h"
+#include "sr_nat.h"
 #include "sr_if.h"
 #include "sr_protocol.h"
 #include "sr_rt.h"
@@ -421,6 +422,7 @@ int sr_read_from_server_expect(struct sr_instance* sr /* borrowed */, int expect
     }
 
     ret = 1;
+
     switch (command)
     {
         /* -------------        VNSPACKET     -------------------- */
@@ -471,11 +473,16 @@ int sr_read_from_server_expect(struct sr_instance* sr /* borrowed */, int expect
 
         case VNSHWINFO:
             sr_handle_hwinfo(sr,(c_hwinfo*)buf);
+
             if(sr_verify_routing_table(sr) != 0)
             {
                 fprintf(stderr,"Routing table not consistent with hardware\n");
                 return -1;
             }
+
+            (sr->nat)->int_if = sr_get_interface(sr, (sr->nat)->int_if_name);
+	    (sr->nat)->ext_if = sr_get_interface(sr, (sr->nat)->ext_if_name);
+
             printf(" <-- Ready to process packets --> \n");
             break;
 
