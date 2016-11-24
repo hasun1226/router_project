@@ -325,7 +325,7 @@ struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_nat *nat,
     struct sr_if* ext = nat->ext_if;
 
     /* handle insert here, create a mapping, and then return a copy of it */
-    struct sr_nat_mapping *mapping = malloc(sizeof(struct sr_nat_mapping *));
+    struct sr_nat_mapping *mapping = malloc(sizeof(struct sr_nat_mapping));
 
     /* Case it is tcp mapping */
     mapping->type = type;                                     /* type */
