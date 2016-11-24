@@ -303,6 +303,7 @@ struct sr_nat_mapping *sr_nat_lookup_internal(struct sr_nat *nat,
                there may be several internal ip-port pairs */
             /* if (type = nat_mapping_tcp) copy = copy->next;
             else */
+	    pthread_mutex_unlock(&(nat->lock));
             return copy;
         }
 
@@ -322,27 +323,20 @@ struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_nat *nat,
     pthread_mutex_lock(&(nat->lock));
 
     struct sr_if* ext = nat->ext_if;
-    sr_print_if(ext);
 
     /* handle insert here, create a mapping, and then return a copy of it */
     struct sr_nat_mapping *mapping = malloc(sizeof(struct sr_nat_mapping *));
-/*    struct sr_if *external_interface = nat->ext_if; */
 
     /* Case it is tcp mapping */
     mapping->type = type;                                     /* type */
-    printf("Type is nat_mapping_icmp: %d\n", type == nat_mapping_icmp);
 
     mapping->ip_int = ip_int;                                 /* internal ip addr */
-print_addr_ip_int(ntohl(ip_int));
 
     mapping->ip_ext = ext->ip;                                /* external ip addr */
-print_addr_ip_int(ntohl(mapping->ip_ext));
 
     mapping->aux_int = aux_int;                               /* internal port or icmp id */
-printf("%d\n", aux_int);
 
     mapping->aux_ext = generate_port_number(nat->mappings, ip_int, aux_int);                               /* external port or icmp id */
-printf("%d\n", mapping->aux_ext);
 
     time(&mapping->last_updated);                             /* use to timeout mappings */
     mapping->conns = NULL;                                    /* list of connections. null for ICMP */
@@ -350,7 +344,7 @@ printf("%d\n", mapping->aux_ext);
     mapping->next = nat->mappings;
     nat->mappings = mapping;
 
-    struct sr_nat_mapping *copy = (struct sr_nat_mapping *)malloc(sizeof(struct sr_nat_mapping));
+    struct sr_nat_mapping *copy = (struct sr_nat_mapping *) malloc(sizeof(struct sr_nat_mapping));
     memcpy(copy, mapping, sizeof(struct sr_nat_mapping));
 
     pthread_mutex_unlock(&(nat->lock));
@@ -389,26 +383,13 @@ int generate_port_number(struct sr_nat_mapping *mappings, uint32_t ip_int, uint1
 {
 
     int divisor = RAND_MAX/(MAX_PORT_NUMBER+1);
-    int retval;
+    int result;
 
     do { 
-        retval = rand() / divisor;
-    } while (retval > MAX_PORT_NUMBER);
+        result = rand() / divisor;
+    } while (result > MAX_PORT_NUMBER || result < TOTAL_WELL_KNOWN_PORTS || !is_unique_port_number(mappings, result));
 
-    int result = retval;
-
-printf("initial Port number: %d\n", result);
-printf("result smaller than 1024: %d\n", result < TOTAL_WELL_KNOWN_PORTS);
-printf("result bigger than max_port_number: %d\n", result > MAX_PORT_NUMBER);
-printf("is_unique_port_number: %d\n", is_unique_port_number(mappings, result));
-
-    while ((result  < TOTAL_WELL_KNOWN_PORTS) || (result > MAX_PORT_NUMBER) || !is_unique_port_number(mappings, result))
-    {
-	printf("inside while loop\n");
-        result = ip_int + aux_int + rand() % MAX_PORT_NUMBER;
-    }
-
-printf("final Port number: %d\n", result);
+    printf("final Port number: %d\n", result);
     return result;
 }
 
