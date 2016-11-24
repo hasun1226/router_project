@@ -271,7 +271,7 @@ struct sr_nat_mapping *sr_nat_lookup_external(struct sr_nat *nat,
         {
             copy = (struct sr_nat_mapping *) malloc(sizeof(struct sr_nat_mapping));
             memcpy(copy, current_entry, sizeof(struct sr_nat_mapping));
-
+	    pthread_mutex_unlock(&(nat->lock));
             return copy;
         }
 
