@@ -480,8 +480,11 @@ int sr_read_from_server_expect(struct sr_instance* sr /* borrowed */, int expect
                 return -1;
             }
 
-            (sr->nat)->int_if = sr_get_interface(sr, (sr->nat)->int_if_name);
-	    (sr->nat)->ext_if = sr_get_interface(sr, (sr->nat)->ext_if_name);
+            if (sr->nat_status)
+            {
+                (sr->nat)->int_if = sr_get_interface(sr, (sr->nat)->int_if_name);
+                (sr->nat)->ext_if = sr_get_interface(sr, (sr->nat)->ext_if_name);
+            }
 
             printf(" <-- Ready to process packets --> \n");
             break;
@@ -561,7 +564,7 @@ sr_ether_addrs_match_interface( struct sr_instance* sr, /* borrowed */
 	struct sr_ip_hdr* ip_hdr = (struct sr_ip_hdr*)(buf + sizeof(sr_ethernet_hdr_t));
 	rt_entry = sr_lpm(sr, ip_hdr->ip_dst);
     }
-     
+
     else if (ethertype(buf) == ethertype_arp)
     {
 	struct sr_arp_hdr* arp_hdr = (struct sr_arp_hdr*)(buf + sizeof(sr_ethernet_hdr_t));

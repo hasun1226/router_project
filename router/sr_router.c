@@ -182,55 +182,59 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
 
     if (ip_header->ip_p == ip_protocol_icmp)
     {
-	fprintf(stderr, "NAT process: icmp packet received\n");
+        fprintf(stderr, "NAT process: icmp packet received\n");
         sr_icmp_hdr_t *icmp_hdr = (sr_icmp_hdr_t *) (buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-/*        uint16_t icmp_sum_copy = icmp_hdr->icmp_sum; */
+        uint16_t icmp_sum_copy = icmp_hdr->icmp_sum;
 
-        /* Sanity check on ICMP header
-        if (icmp_hdr->icmp_type != ICMP_ECHO || icmp_hdr->icmp_type != ICMP_ECHO_REPLY ||
-            icmp_sum_copy != cksum(icmp_hdr, ntohs(ip_header->ip_len) - ip_hdr_bytelen))
-            {
-                fprintf(stderr, "NAT process: ICMP header sanity check failed\n");
-                return;
-            }
+        /* Sanity check on ICMP header */
+        if (icmp_hdr->icmp_type != ICMP_ECHO || icmp_hdr->icmp_type != ICMP_ECHO_REPLY) {
+            fprintf(stderr, "NOT ECHO\n");
+            return;
+        }
 
-        icmp_hdr->icmp_sum = icmp_sum_copy; */
+        icmp_hdr->icmp_sum = 0;
+        if (icmp_sum_copy != cksum(icmp_hdr, ntohs(ip_header->ip_len) - ip_hdr_bytelen)) {
+            fprintf(stderr, "NAT process: ICMP header sanity check failed\n");
+            return;
+        }
+
+        icmp_hdr->icmp_sum = icmp_sum_copy;
 
         /* Packet is from the internal interface */
         if (!strcmp(interface, (sr->nat)->int_if_name))
         {
-	    fprintf(stderr, "Packet received at internal interface\n");
-	    print_hdrs(buf, len);
-	    struct sr_nat_mapping *mapping = sr_nat_lookup_internal(sr->nat, ip_header->ip_src, icmp_hdr->icmp_id, nat_mapping_icmp);
+            fprintf(stderr, "Packet received at internal interface\n");
+            print_hdrs(buf, len);
+            struct sr_nat_mapping *mapping = sr_nat_lookup_internal(sr->nat, ip_header->ip_src, icmp_hdr->icmp_id, nat_mapping_icmp);
 
             /* No such mapping, insert it */
             if (!mapping) {
-		printf("No mapping\n");
+                printf("No mapping\n");
                 mapping = sr_nat_insert_mapping(sr->nat, ip_header->ip_src, icmp_hdr->icmp_id, nat_mapping_icmp);
-	    }
+            }
 
-printf("Rewriting outgoing packet\n");
+            printf("Rewriting outgoing packet\n");
             /* Rewrite outgoing packet */
             ip_header->ip_src = sr_get_interface(sr, DEFAULT_EXTERNAL_INTERFACE)->ip;
             icmp_hdr->icmp_id = mapping->aux_ext;
-	    icmp_hdr->icmp_sum = 0;
+	        icmp_hdr->icmp_sum = 0;
             icmp_hdr->icmp_sum = cksum(icmp_hdr, ntohs(ip_header->ip_len) - ip_hdr_bytelen);
     	    ip_header->ip_sum = 0;
             ip_header->ip_sum = cksum(ip_header, ip_hdr_bytelen);
 
-print_hdrs(buf, len);
-	    printf("Finished Rewriting outgoing packet\n");
+            print_hdrs(buf, len);
+            printf("Finished Rewriting outgoing packet\n");
 
             free(mapping);
             check_and_send(sr, buf, len, (sr->nat)->int_if_name);
-printf("Sent the outgoing packet\n");
+            printf("Sent the outgoing packet\n");
         }
 
         /* Packet is from the external interface */
         else
         {
-	    printf("Received packet from external interface\n");
-print_hdrs(buf, len);
+            printf("Received packet from external interface\n");
+            print_hdrs(buf, len);
             struct sr_nat_mapping *mapping = sr_nat_lookup_external(sr->nat, icmp_hdr->icmp_id, nat_mapping_icmp);
 
             /*
@@ -243,22 +247,22 @@ print_hdrs(buf, len);
                 /* sr_send_icmp_t3(sr, ICMP_PORT_UNREACHABLE, packet, len, sr_get_interface(sr, interface)); */
                 return;
             }
-printf("Rewriting incoming packet\n");
+            printf("Rewriting incoming packet\n");
 
             /* Rewrite the packet going to internal interface */
             ip_header->ip_dst = mapping->ip_int;
             icmp_hdr->icmp_id = mapping->aux_int;
-	    icmp_hdr->icmp_sum = 0;
+            icmp_hdr->icmp_sum = 0;
             icmp_hdr->icmp_sum = cksum(icmp_hdr, ntohs(ip_header->ip_len) - ip_hdr_bytelen);
-	    ip_header->ip_sum = 0;
+            ip_header->ip_sum = 0;
             ip_header->ip_sum = cksum(ip_header, ip_hdr_bytelen);
 
-print_hdrs(buf, len);
+            print_hdrs(buf, len);
             printf("Finished Rewriting incoming packet\n");
 
             free(mapping);
             check_and_send(sr, buf, len, DEFAULT_EXTERNAL_INTERFACE);
-printf("Sent the incoming packet\n");
+            printf("Sent the incoming packet\n");
         }
 
     }
