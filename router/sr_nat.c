@@ -393,6 +393,9 @@ void deletePendingSyn(sr_nat_pending_syn_t **head, sr_nat_pending_syn_t *n)
         sr_nat_pending_syn_t *temp = *head;
         *head = temp->next;
 
+        /*free the ip header*/
+        free(temp->ip_hdr);
+
         /* free memory */
         free(temp);
 
@@ -419,8 +422,11 @@ void deletePendingSyn(sr_nat_pending_syn_t **head, sr_nat_pending_syn_t *n)
     /* Remove node from Linked List */
     prev->next = prev->next->next;
 
+    /*Free the ip header*/
+    free(n->ip_hdr);
     /* Free memory */
     free(n);
+
 
     return;
 }
