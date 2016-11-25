@@ -217,7 +217,7 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
             /* Rewrite outgoing packet */
             ip_header->ip_src = sr_get_interface(sr, DEFAULT_EXTERNAL_INTERFACE)->ip;
             icmp_hdr->icmp_id = mapping->aux_ext;
-	    icmp_hdr->icmp_sum = 0;
+            icmp_hdr->icmp_sum = 0;
             icmp_hdr->icmp_sum = cksum(icmp_hdr, ntohs(ip_header->ip_len) - ip_hdr_bytelen);
     	    ip_header->ip_sum = 0;
             ip_header->ip_sum = cksum(ip_header, ip_hdr_bytelen);
@@ -265,12 +265,12 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
     else if (ip_header->ip_p == ip_protocol_tcp)
     {
         sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t *) (buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-	printf("Received packet with the following IP header, TCP header\n");
-	print_hdr_ip(buf + sizeof(sr_ethernet_hdr_t));
-	print_hdr_tcp(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+        printf("Received packet with the following IP header, TCP header\n");
+        print_hdr_ip(buf + sizeof(sr_ethernet_hdr_t));
+        print_hdr_tcp(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
 
         /* Sanity check on TCP header */
-	uint16_t tcp_sum = tcp_cksum(buf);
+        uint16_t tcp_sum = tcp_cksum(buf);
         if (tcp_hdr->tcp_sum != tcp_sum)
         {
             fprintf(stderr, "NAT process: TCP header sanity check failed with %d\n", tcp_sum);
@@ -280,11 +280,14 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
         /* Packet is outbound(from the internal interface) insert or lookup mapping */
         if (!strcmp(interface, (sr->nat)->int_if_name))
         {
-	    printf("Received packet from internal interface\n");
+            printf("Received packet from internal interface\n");
             struct sr_nat_mapping *mapping = sr_nat_lookup_internal(sr->nat, ip_header->ip_src, tcp_hdr->src_port, nat_mapping_tcp);
 
-            if (!mapping)
+            /* No such mapping, insert it! */
+            if (!mapping) {
+                printf("No mapping\n");
                 mapping = sr_nat_insert_mapping(sr->nat, ip_header->ip_src, tcp_hdr->src_port, nat_mapping_tcp);
+            }
 
             /* Rewrite outgoing packet */
             ip_header->ip_src = sr_get_interface(sr, DEFAULT_EXTERNAL_INTERFACE)->ip;
@@ -301,11 +304,20 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
         /* Packet is from the external interface */
         else
         {
-	    printf("Received packet from external interface\n");
+            printf("Received packet from external interface\n");
             struct sr_nat_mapping *mapping = sr_nat_lookup_external(sr->nat, tcp_hdr->dst_port, nat_mapping_tcp);
 
-            /* No such mapping and not a SYN(for simultaneous open?), drop it */
-            if (tcp_hdr->flag != SYN && mapping == NULL) return;
+            /* No such mapping, check if there is a simultaneous open */
+            if (mapping == NULL)
+            {
+                /* To do: insert mapping with two SYNs */
+                if (tcp_hdr->flag == SYN) {
+                    mapping = sr_nat_insert_mapping(sr->nat, ip_header->ip_src, tcp_hdr->src_port, nat_mapping_tcp);
+                }
+
+                /* not a SYN so drop it */
+                else return;
+            }
 
             /* Rewrite incoming packet */
             ip_header->ip_dst = mapping->ip_int;
