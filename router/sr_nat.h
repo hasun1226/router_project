@@ -65,7 +65,7 @@ struct sr_nat_mapping {
 struct sr_nat {
   /* add any fields here */
   struct sr_nat_mapping *mappings;
-  sr_nat_pending_syn_t *pending_syn;
+  sr_nat_pending_syn_t *pending_syns;
   char *int_if_name;
   char *ext_if_name;
   struct sr_if *int_if;
@@ -107,6 +107,12 @@ void init_incoming_tcp_state(struct sr_nat_connection *connection, sr_tcp_hdr_t 
 void update_incoming_tcp_state(struct sr_nat_connection *connection, sr_tcp_hdr_t *tcp_header);
 
 void deleteMapping(struct sr_nat_mapping **head, struct sr_nat_mapping *n);
+
+void sr_nat_insert_pending_syn(struct sr_nat *nat, uint16_t aux_ext, sr_ip_hdr_t *ip_header);
+int is_nat_timeout_pending_syn(sr_nat_pending_syn_t *pending_syn_entry);
+void deletePendingSyn(sr_nat_pending_syn_t **head, sr_nat_pending_syn_t *n);
+void nat_timeout_pending_syns(struct sr_nat *nat, sr_nat_pending_syn_t **head);
+
 
 int   sr_nat_destroy(struct sr_nat *nat);  /* Destroys the nat (free memory) */
 void *sr_nat_timeout(void *nat_ptr);  /* Periodic Timout */

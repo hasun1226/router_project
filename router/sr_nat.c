@@ -13,6 +13,7 @@
 #define TOTAL_WELL_KNOWN_PORTS 1024
 #define DEFAULT_INTERNAL_INTERFACE "eth1"
 #define DEFAULT_EXTERNAL_INTERFACE "eth2"
+#define UNSOLICITED_SYN_TIMEOUT 6
 
 int sr_nat_init(struct sr_nat *nat,
                 time_t icmp_timeout,
@@ -36,7 +37,7 @@ int sr_nat_init(struct sr_nat *nat,
 
   /* CAREFUL MODIFYING CODE ABOVE THIS LINE! */
 
-  nat->pending_syn = NULL;
+  nat->pending_syns = NULL;
   nat->mappings = NULL;
 
   /* Initialize any variables here */
@@ -245,8 +246,7 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
         /* handle periodic tasks here */
 
         tcp_time_out_mapping(nat, &nat->mappings);
-
-        /* Todo: NEED TO ADD TIMEOUT FOR PENDING SYNS */
+        nat_timeout_pending_syns(nat, &nat->pending_syns);
 
         pthread_mutex_unlock(&(nat->lock));
     }
@@ -350,6 +350,92 @@ struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_nat *nat,
     pthread_mutex_unlock(&(nat->lock));
 
     return copy;
+}
+
+void nat_timeout_pending_syns(struct sr_nat *nat, sr_nat_pending_syn_t **head)
+{
+    sr_nat_pending_syn_t *current_pending_syn = *head;
+
+    while (current_pending_syn != NULL)
+    {
+        if (is_nat_timeout_pending_syn(current_pending_syn)) 
+        {
+            if (sr_nat_lookup_external(nat, current_pending_syn->aux_ext, nat_mapping_tcp) == NULL)
+            {
+                /*TODO: FIX THIS PART OF THE FUNCTION*/    
+               /*SEND ICMP UNREACHABLE*/ 
+                /*sr_if_t *out_interface = get_external_iface(sr);
+                sr_send_icmp_t3(sr, ICMP_NET_UNREACHABLE, packet, len, out_interface);*/
+            }
+
+            deletePendingSyn(head, current_pending_syn);
+        }
+
+        current_pending_syn = current_pending_syn->next;
+    }
+}
+
+int is_nat_timeout_pending_syn(sr_nat_pending_syn_t *pending_syn_entry)
+{
+    time_t now;
+    time(&now);
+    int difference = difftime(now, pending_syn_entry->time_received) < UNSOLICITED_SYN_TIMEOUT;
+
+    return difference;
+}
+
+void deletePendingSyn(sr_nat_pending_syn_t **head, sr_nat_pending_syn_t *n)
+{
+    /* When node to be deleted is head node*/
+    if(*head == n)
+    {
+        /* store address of current node */
+        sr_nat_pending_syn_t *temp = *head;
+        *head = temp->next;
+
+        /* free memory */
+        free(temp);
+
+        return;
+    }
+
+    /* When it is not the first node, follow the normal deletion process*/
+
+    /* find the previous node */
+    sr_nat_pending_syn_t *prev = *head;
+
+    while(prev->next != NULL && prev->next != n)
+    {
+        prev = prev->next;
+    }
+
+    /* Check if node really exists in Linked List */
+    if(prev->next == NULL)
+    {
+        printf("\n the given node is not in Linked List\n");
+        return;
+    }
+
+    /* Remove node from Linked List */
+    prev->next = prev->next->next;
+
+    /* Free memory */
+    free(n);
+
+    return;
+}
+
+void sr_nat_insert_pending_syn(struct sr_nat *nat, uint16_t aux_ext, sr_ip_hdr_t *ip_header) 
+{
+  unsigned int ip_len = ntohs(ip_header->ip_len);
+  sr_nat_pending_syn_t *pending_syn = (sr_nat_pending_syn_t *)malloc(sizeof(sr_nat_pending_syn_t));
+  time(&pending_syn->time_received);
+  pending_syn->aux_ext = aux_ext;
+  pending_syn->ip_hdr = malloc(ip_len);
+  memcpy(pending_syn->ip_hdr,ip_header,ip_len);
+
+  pending_syn->next = nat->pending_syns;
+  nat->pending_syns = pending_syn;
 }
 
 /*combination of private and public*/
