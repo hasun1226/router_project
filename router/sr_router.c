@@ -148,11 +148,20 @@ uint16_t tcp_cksum(uint8_t *packet) {
     pseudo_tcp->dst_add = ip_hdr->ip_dst;
     pseudo_tcp->reserved = 0x0;
     pseudo_tcp->ip_p = ip_protocol_tcp;
-    pseudo_tcp->length = htons(tcp_len);
+    pseudo_tcp->length = tcp_len;
 
-    sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-    memcpy(data + sizeof(pseudo_tcp_hdr_t), tcp_hdr, tcp_len);
+printf("Inside TCP checksum\n");
+print_addr_ip_int(ntohl(pseudo_tcp->src_add));
+print_addr_ip_int(ntohl(pseudo_tcp->dst_add));
+printf("Protocol: %d\n", pseudo_tcp->ip_p);
+printf("TCP Length: %d\n", pseudo_tcp->length);
+
+    memcpy(data + sizeof(pseudo_tcp_hdr_t), packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t), tcp_len);
     sr_tcp_hdr_t *ck_tcp_hdr = (sr_tcp_hdr_t *) (data + sizeof(pseudo_tcp_hdr_t));
+
+printf("TCP header after Pseudo-TCP header\n");
+print_hdr_tcp(data);
+
     ck_tcp_hdr->tcp_sum = 0;
 
     uint16_t result = cksum(data, sizeof(pseudo_tcp_hdr_t) + tcp_len);
@@ -217,7 +226,7 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
             /* Rewrite outgoing packet */
             ip_header->ip_src = sr_get_interface(sr, DEFAULT_EXTERNAL_INTERFACE)->ip;
             icmp_hdr->icmp_id = mapping->aux_ext;
-	        icmp_hdr->icmp_sum = 0;
+	    icmp_hdr->icmp_sum = 0;
             icmp_hdr->icmp_sum = cksum(icmp_hdr, ntohs(ip_header->ip_len) - ip_hdr_bytelen);
     	    ip_header->ip_sum = 0;
             ip_header->ip_sum = cksum(ip_header, ip_hdr_bytelen);
@@ -244,7 +253,6 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
             if (!mapping)
             {
                 sr_send_icmp_reply(sr, packet, len, sr_get_interface(sr, interface));
-                /* sr_send_icmp_t3(sr, ICMP_PORT_UNREACHABLE, packet, len, sr_get_interface(sr, interface)); */
                 return;
             }
             printf("Rewriting incoming packet\n");
@@ -270,6 +278,11 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
     else if (ip_header->ip_p == ip_protocol_tcp)
     {
         sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t *) (buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+	printf("Received packet with the following TCP header\n");
+
+	uint8_t *tcp = (uint8_t *) malloc(sizeof(sr_tcp_hdr_t));
+	memcpy(tcp, tcp_hdr, ntohs(ip_header->ip_len) - ip_header->ip_hl * WORD_TO_BYTE);
+	print_hdr_tcp(tcp);
 
         /* Sanity check on TCP header */
 	uint16_t tcp_sum = tcp_cksum(buf);
