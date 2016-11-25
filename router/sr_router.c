@@ -144,28 +144,18 @@ uint16_t tcp_cksum(uint8_t *packet) {
     uint8_t *data = malloc (sizeof(pseudo_tcp_hdr_t) + tcp_len);
     pseudo_tcp_hdr_t *pseudo_tcp = (pseudo_tcp_hdr_t *) data;
 
-    pseudo_tcp->src_add = ntohl(ip_hdr->ip_src);
-    pseudo_tcp->dst_add = ntohl(ip_hdr->ip_dst);
+    pseudo_tcp->src_add = ip_hdr->ip_src;
+    pseudo_tcp->dst_add = ip_hdr->ip_dst;
     pseudo_tcp->reserved = 0x0;
     pseudo_tcp->ip_p = ip_protocol_tcp;
-    pseudo_tcp->length = tcp_len;
-
-printf("Inside TCP checksum\n");
-print_addr_ip_int(pseudo_tcp->src_add);
-print_addr_ip_int(pseudo_tcp->dst_add);
-printf("Reserved: %d\n", pseudo_tcp->reserved);
-printf("Protocol: %d\n", pseudo_tcp->ip_p);
-printf("TCP Length: %d\n", pseudo_tcp->length);
+    pseudo_tcp->length = htons(tcp_len);
 
     memcpy(data + sizeof(pseudo_tcp_hdr_t), packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t), tcp_len);
     sr_tcp_hdr_t *ck_tcp_hdr = (sr_tcp_hdr_t *) (data + sizeof(pseudo_tcp_hdr_t));
 
-printf("TCP header after Pseudo-TCP header\n");
-print_hdr_tcp(data + sizeof(pseudo_tcp_hdr_t));
-
     ck_tcp_hdr->tcp_sum = 0;
 
-    uint16_t result = cksum(data, sizeof(pseudo_tcp) + tcp_len);
+    uint16_t result = ntohs(cksum(data, 12 + tcp_len));
     free(data);
     return result;
 }
@@ -247,10 +237,6 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
             print_hdrs(buf, len);
             struct sr_nat_mapping *mapping = sr_nat_lookup_external(sr->nat, icmp_hdr->icmp_id, nat_mapping_icmp);
 
-            /*
-             * No such mapping, drop it? send ICMP echo reply? send ICMP Port Unreachable? For now, we assume ICMP echo reply
-             * Piazza post says "if no mapping is found, then you can safely assume this ping request is targeted at the router itself"
-             */
             if (!mapping)
             {
                 sr_send_icmp_reply(sr, packet, len, sr_get_interface(sr, interface));
@@ -294,6 +280,7 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
         /* Packet is outbound(from the internal interface) insert or lookup mapping */
         if (!strcmp(interface, (sr->nat)->int_if_name))
         {
+	    printf("Received packet from internal interface\n");
             struct sr_nat_mapping *mapping = sr_nat_lookup_internal(sr->nat, ip_header->ip_src, tcp_hdr->src_port, nat_mapping_tcp);
 
             if (!mapping)
@@ -314,6 +301,7 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
         /* Packet is from the external interface */
         else
         {
+	    printf("Received packet from external interface\n");
             struct sr_nat_mapping *mapping = sr_nat_lookup_external(sr->nat, tcp_hdr->dst_port, nat_mapping_tcp);
 
             /* No such mapping and not a SYN(for simultaneous open?), drop it */
