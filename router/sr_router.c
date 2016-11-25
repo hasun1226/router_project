@@ -154,7 +154,6 @@ uint16_t tcp_cksum(uint8_t *packet) {
     sr_tcp_hdr_t *ck_tcp_hdr = (sr_tcp_hdr_t *) (data + sizeof(pseudo_tcp_hdr_t));
 
     ck_tcp_hdr->tcp_sum = 0;
-    printf("this is size of pseudo_tcp_hdr_t %zu\n", sizeof(pseudo_tcp_hdr_t));
     uint16_t result = ntohs(cksum(data, sizeof(pseudo_tcp_hdr_t) + tcp_len));
     free(data);
     return result;
