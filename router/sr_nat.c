@@ -225,6 +225,16 @@ int sr_nat_destroy(struct sr_nat *nat) {  /* Destroys the nat (free memory) */
         free(temp_mapping);
     }
 
+    sr_nat_pending_syn_t *current_pending_syn = nat->pending_syns;
+    sr_nat_pending_syn_t *temp_pending_syn;
+
+    while(current_pending_syn != NULL)
+    {
+        temp_pending_syn = current_pending_syn;
+        current_pending_syn = current_pending_syn->next;
+        free(temp_pending_syn);
+    }
+
     /* Todo: NEED TO DELETE PENDING SYNS*/
     pthread_kill(nat->thread, SIGKILL);
     return  pthread_mutex_destroy(&(nat->lock)) &&
