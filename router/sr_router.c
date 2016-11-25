@@ -272,9 +272,10 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
         sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t *) (buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
 
         /* Sanity check on TCP header */
-        if (tcp_hdr->tcp_sum != tcp_cksum(buf))
+	uint16_t tcp_sum = tcp_cksum(buf);
+        if (tcp_hdr->tcp_sum != tcp_sum)
         {
-            fprintf(stderr, "NAT process: TCP header sanity check failed\n");
+            fprintf(stderr, "NAT process: TCP header sanity check failed with %d\n", tcp_sum);
             return;
         }
 
