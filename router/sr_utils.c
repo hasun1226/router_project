@@ -112,8 +112,8 @@ void print_hdr_tcp(uint8_t *buf)
 {
   sr_tcp_hdr_t *tcp_header = (sr_tcp_hdr_t *)buf;
   fprintf(stderr, "TCP header:\n");
-  fprintf(stderr, "\tSource Port: %d\n", tcp_header->src_port);
-  fprintf(stderr, "\tDestination Port: %d\n", tcp_header->dst_port);
+  fprintf(stderr, "\tSource Port: %d\n", ntohs(tcp_header->src_port));
+  fprintf(stderr, "\tDestination Port: %d\n", ntohs(tcp_header->dst_port));
   fprintf(stderr, "\tSequence Number: %lu\n", (unsigned long) tcp_header->seq);
   fprintf(stderr, "\tAck Number: %lu\n", (unsigned long) tcp_header->ack);
   fprintf(stderr, "\tFlag: %d\n", tcp_header->flag);
