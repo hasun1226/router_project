@@ -111,7 +111,7 @@ void sr_set_ether_addr(struct sr_instance* , const unsigned char* );
 void sr_print_if_list(struct sr_instance* );
 
 /* -- sr_nat_init.c -- */
-int sr_nat_init(struct sr_nat *nat,
+int sr_nat_init(struct sr_instance* sr,
                 time_t icmp_timeout,
                 time_t tcp_established_timeout,
                 time_t tcp_transmission_timeout);

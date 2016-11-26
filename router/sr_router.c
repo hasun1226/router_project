@@ -58,7 +58,7 @@ void sr_init( struct sr_instance* sr,
     if (sr->nat_status)
     {
         sr->nat = (struct sr_nat *)malloc(sizeof(struct sr_nat));
-        sr_nat_init(sr->nat, icmp_timeout, tcp_established_timeout, tcp_transmission_timeout);
+        sr_nat_init(sr, icmp_timeout, tcp_established_timeout, tcp_transmission_timeout);
     }
 
 } /* -- sr_init -- */
@@ -312,6 +312,7 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
                 /* To do: insert mapping with two SYNs */
                 if (tcp_hdr->flag == SYN) {
                     mapping = sr_nat_insert_mapping(sr->nat, ip_header->ip_src, tcp_hdr->src_port, nat_mapping_tcp);
+                    sr_nat_insert_pending_syn(sr->nat, tcp_hdr->dst_port, packet, len);
                 }
 
                 /* not a SYN so drop it */

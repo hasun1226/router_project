@@ -35,7 +35,9 @@ struct sr_nat_pending_syn
   /* add TCP connection state data members here */
   time_t time_received;
   uint16_t aux_ext;
-  sr_ip_hdr_t *ip_hdr;
+  uint8_t *packet;
+  unsigned int len;
+  /*sr_ip_hdr_t *ip_hdr;*/
   struct sr_nat_pending_syn *next;
 };
 typedef struct sr_nat_pending_syn sr_nat_pending_syn_t;
@@ -87,7 +89,7 @@ struct sr_nat {
 
 struct sr_nat_connection *create_connection(uint32_t dst_ip, uint16_t dst_port);
 struct sr_nat_connection *contains_connection(struct sr_nat_connection *connections, uint32_t dst_ip, uint16_t dst_port);
-/* struct sr_if *get_external_interface(struct sr_instance *sr); */
+ struct sr_if *get_external_interface(struct sr_instance *sr); 
 int tcp_time_out_connection(struct sr_nat *nat, struct sr_nat_connection **head);
 void deleteConnection(struct sr_nat_connection **head, struct sr_nat_connection *n);
 int is_nat_timeout_tcp(struct sr_nat *nat, struct sr_nat_connection *connection_entry);
@@ -108,14 +110,14 @@ void update_incoming_tcp_state(struct sr_nat_connection *connection, sr_tcp_hdr_
 
 void deleteMapping(struct sr_nat_mapping **head, struct sr_nat_mapping *n);
 
-void sr_nat_insert_pending_syn(struct sr_nat *nat, uint16_t aux_ext, sr_ip_hdr_t *ip_header);
+void sr_nat_insert_pending_syn(struct sr_nat *nat, uint16_t aux_ext, uint8_t *packet, unsigned int len);
 int is_nat_timeout_pending_syn(sr_nat_pending_syn_t *pending_syn_entry);
 void deletePendingSyn(sr_nat_pending_syn_t **head, sr_nat_pending_syn_t *n);
-void nat_timeout_pending_syns(struct sr_nat *nat, sr_nat_pending_syn_t **head);
+void nat_timeout_pending_syns(struct sr_instance* sr, sr_nat_pending_syn_t **head);
 
 
 int   sr_nat_destroy(struct sr_nat *nat);  /* Destroys the nat (free memory) */
-void *sr_nat_timeout(void *nat_ptr);  /* Periodic Timout */
+void *sr_nat_timeout(void *sr_ptr);  /* Periodic Timout */
 
 /* Get the mapping associated with given external port.
    You must free the returned structure if it is not NULL. */

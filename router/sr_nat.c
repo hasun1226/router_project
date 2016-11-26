@@ -15,13 +15,13 @@
 #define DEFAULT_EXTERNAL_INTERFACE "eth2"
 #define UNSOLICITED_SYN_TIMEOUT 6
 
-int sr_nat_init(struct sr_nat *nat,
+int sr_nat_init(struct sr_instance* sr,
                 time_t icmp_timeout,
                 time_t tcp_established_timeout,
                 time_t tcp_transmission_timeout) { /* Initializes the nat */
 
-  assert(nat);
-
+  assert(sr);
+  struct sr_nat *nat = sr->nat;
   /* Acquire mutex lock */
   pthread_mutexattr_init(&(nat->attr));
   pthread_mutexattr_settype(&(nat->attr), PTHREAD_MUTEX_RECURSIVE);
@@ -33,7 +33,7 @@ int sr_nat_init(struct sr_nat *nat,
   pthread_attr_setdetachstate(&(nat->thread_attr), PTHREAD_CREATE_JOINABLE);
   pthread_attr_setscope(&(nat->thread_attr), PTHREAD_SCOPE_SYSTEM);
   pthread_attr_setscope(&(nat->thread_attr), PTHREAD_SCOPE_SYSTEM);
-  pthread_create(&(nat->thread), &(nat->thread_attr), sr_nat_timeout, nat);
+  pthread_create(&(nat->thread), &(nat->thread_attr), sr_nat_timeout, sr);
 
   /* CAREFUL MODIFYING CODE ABOVE THIS LINE! */
 
@@ -242,9 +242,9 @@ int sr_nat_destroy(struct sr_nat *nat) {  /* Destroys the nat (free memory) */
 
 }
 
-void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
-
-    struct sr_nat *nat = (struct sr_nat *)nat_ptr;
+void *sr_nat_timeout(void *sr_ptr) {  /* Periodic Timout handling */
+    struct sr_instance* sr = (struct sr_instance*) sr_ptr;
+    struct sr_nat *nat = sr->nat;
 
     while (1)
     {
@@ -256,7 +256,7 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
         /* handle periodic tasks here */
 
         tcp_time_out_mapping(nat, &nat->mappings);
-        nat_timeout_pending_syns(nat, &nat->pending_syns);
+        nat_timeout_pending_syns(sr, &nat->pending_syns);
 
         pthread_mutex_unlock(&(nat->lock));
     }
@@ -362,20 +362,24 @@ struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_nat *nat,
     return copy;
 }
 
-void nat_timeout_pending_syns(struct sr_nat *nat, sr_nat_pending_syn_t **head)
+void nat_timeout_pending_syns(struct sr_instance* sr, sr_nat_pending_syn_t **head)
 {
+    struct sr_nat *nat = sr->nat;
     sr_nat_pending_syn_t *current_pending_syn = *head;
 
     while (current_pending_syn != NULL)
     {
         if (is_nat_timeout_pending_syn(current_pending_syn)) 
         {
-            if (sr_nat_lookup_external(nat, current_pending_syn->aux_ext, nat_mapping_tcp) == NULL)
+            struct sr_nat_mapping *external_mapping = sr_nat_lookup_external(nat, current_pending_syn->aux_ext, nat_mapping_tcp);
+            /*struct sr_nat_mapping *internal_mapping = sr_nat_lookup_inernal(nat, current_pending_syn->aux_int, nat_mapping_tcp)*/;
+            
+            if (((external_mapping == NULL) &&(external_mapping->aux_ext >TOTAL_WELL_KNOWN_PORTS)) || (external_mapping->aux_ext == 22))
             {
                 /*TODO: FIX THIS PART OF THE FUNCTION*/    
                /*SEND ICMP UNREACHABLE*/ 
-                /*sr_if_t *out_interface = get_external_iface(sr);
-                sr_send_icmp_t3(sr, ICMP_NET_UNREACHABLE, packet, len, out_interface);*/
+                struct sr_if *out_interface = get_external_interface(sr);
+                sr_send_icmp_t3(sr, ICMP_PORT_UNREACHABLE, current_pending_syn->packet, current_pending_syn->len, out_interface);
             }
 
             deletePendingSyn(head, current_pending_syn);
@@ -389,7 +393,7 @@ int is_nat_timeout_pending_syn(sr_nat_pending_syn_t *pending_syn_entry)
 {
     time_t now;
     time(&now);
-    int difference = difftime(now, pending_syn_entry->time_received) < UNSOLICITED_SYN_TIMEOUT;
+    int difference = difftime(now, pending_syn_entry->time_received) > UNSOLICITED_SYN_TIMEOUT;
 
     return difference;
 }
@@ -404,7 +408,7 @@ void deletePendingSyn(sr_nat_pending_syn_t **head, sr_nat_pending_syn_t *n)
         *head = temp->next;
 
         /*free the ip header*/
-        free(temp->ip_hdr);
+        free(temp->packet);
 
         /* free memory */
         free(temp);
@@ -433,22 +437,20 @@ void deletePendingSyn(sr_nat_pending_syn_t **head, sr_nat_pending_syn_t *n)
     prev->next = prev->next->next;
 
     /*Free the ip header*/
-    free(n->ip_hdr);
+    free(n->packet);
     /* Free memory */
     free(n);
-
 
     return;
 }
 
-void sr_nat_insert_pending_syn(struct sr_nat *nat, uint16_t aux_ext, sr_ip_hdr_t *ip_header) 
+void sr_nat_insert_pending_syn(struct sr_nat *nat, uint16_t aux_ext, uint8_t *packet, unsigned int len) 
 {
-  unsigned int ip_len = ntohs(ip_header->ip_len);
   sr_nat_pending_syn_t *pending_syn = (sr_nat_pending_syn_t *)malloc(sizeof(sr_nat_pending_syn_t));
   time(&pending_syn->time_received);
   pending_syn->aux_ext = aux_ext;
-  pending_syn->ip_hdr = malloc(ip_len);
-  memcpy(pending_syn->ip_hdr,ip_header,ip_len);
+  pending_syn->packet = malloc(len);
+  memcpy(pending_syn->packet,packet,len);
 
   pending_syn->next = nat->pending_syns;
   nat->pending_syns = pending_syn;
@@ -808,11 +810,10 @@ void init_outgoing_tcp_state(struct sr_nat_connection *connection, sr_tcp_hdr_t 
         connection->state = tcp_state_closed;
     }
 }
-/*
+
 struct sr_if* get_external_interface(struct sr_instance *sr)
 {
-    struct sr_nat *nat = sr->nat;
-    struct sr_if *internal_interface = sr_get_interface(sr, nat->internal_interface_name);
+    struct sr_if *internal_interface = sr_get_interface(sr, DEFAULT_INTERNAL_INTERFACE);
     struct sr_if *current_interface = sr->if_list;
 
     while(current_interface != NULL)
@@ -828,4 +829,4 @@ struct sr_if* get_external_interface(struct sr_instance *sr)
 
     return NULL;
 }
-*/
+
