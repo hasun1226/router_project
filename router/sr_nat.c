@@ -389,7 +389,7 @@ int is_nat_timeout_pending_syn(sr_nat_pending_syn_t *pending_syn_entry)
 {
     time_t now;
     time(&now);
-    int difference = difftime(now, pending_syn_entry->time_received) < UNSOLICITED_SYN_TIMEOUT;
+    int difference = difftime(now, pending_syn_entry->time_received) > UNSOLICITED_SYN_TIMEOUT;
 
     return difference;
 }
