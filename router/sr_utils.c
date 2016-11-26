@@ -116,7 +116,7 @@ void print_hdr_tcp(uint8_t *buf)
   fprintf(stderr, "\tDestination Port: %d\n", ntohs(tcp_header->dst_port));
   fprintf(stderr, "\tSequence Number: %lu\n", (unsigned long) (ntohl(tcp_header->seq)));
   fprintf(stderr, "\tAck Number: %lu\n", (unsigned long) (ntohl(tcp_header->ack)));
-  uint16_t flg = tcp_header->flag;
+  uint16_t flg = ntohs(tcp_header->flag);
   fprintf(stderr, "\tFlag: %d\n", flg);
 
   if ((flg & URG) == URG)
