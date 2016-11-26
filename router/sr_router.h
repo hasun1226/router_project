@@ -104,6 +104,8 @@ void sr_send_icmp_t3(struct sr_instance *sr, int indicator, uint8_t * packet, un
 int contains_interface_ip(struct sr_instance* sr, uint32_t ip);
 struct sr_rt *sr_lpm(struct sr_instance *sr, uint32_t addr);
 
+void process_nat_tcp(struct sr_instance *sr, uint8_t *buf, unsigned int len, char *interface);
+void process_nat_icmp(struct sr_instance *sr, uint8_t *buf, unsigned int len, char *interface);
 /* -- sr_if.c -- */
 void sr_add_interface(struct sr_instance* , const char* );
 void sr_set_ether_ip(struct sr_instance* , uint32_t );
