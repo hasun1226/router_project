@@ -114,31 +114,37 @@ void print_hdr_tcp(uint8_t *buf)
   fprintf(stderr, "TCP header:\n");
   fprintf(stderr, "\tSource Port: %d\n", ntohs(tcp_header->src_port));
   fprintf(stderr, "\tDestination Port: %d\n", ntohs(tcp_header->dst_port));
-  fprintf(stderr, "\tSequence Number: %lu\n", (unsigned long) tcp_header->seq);
-  fprintf(stderr, "\tAck Number: %lu\n", (unsigned long) tcp_header->ack);
-  fprintf(stderr, "\tFlag: %d\n", tcp_header->flag);
+  fprintf(stderr, "\tSequence Number: %lu\n", (unsigned long) (ntohl(tcp_header->seq)));
+  fprintf(stderr, "\tAck Number: %lu\n", (unsigned long) (ntohl(tcp_header->ack)));
+  uint16_t flg = tcp_header->flag;
+  fprintf(stderr, "\tFlag: %d\n", flg);
 
-  if ((tcp_header->flag & URG) == URG)
+  if ((flg & URG) == URG)
   {
     fprintf(stderr, "\tFlag Code: %s\n", "URG");
   }
   
-  if ((tcp_header->flag & ACK) == ACK)
+  if ((flg & ACK) == ACK)
   {
     fprintf(stderr, "\tFlag Code: %s\n", "ACK");
   }
   
-  if ((tcp_header->flag & PSH) == PSH)
+  if ((flg & PSH) == PSH)
   {
     fprintf(stderr, "\tFlag Code: %s\n", "PSH");
   }
   
-  if ((tcp_header->flag & SYN) == SYN)
+  if ((flg & RST) == RST)
+  {
+    fprintf(stderr, "\tFlag Code: %s\n", "RST");
+  }
+  
+  if ((flg & SYN) == SYN)
   {
     fprintf(stderr, "\tFlag Code: %s\n", "SYN");
   }
 
-  if ((tcp_header->flag & FIN) == FIN)
+  if ((flg & FIN) == FIN)
   {
     fprintf(stderr, "\tFlag Code: %s\n", "FIN");
   }

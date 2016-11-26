@@ -111,7 +111,7 @@ struct sr_tcp_hdr {
   uint16_t src_port, dst_port; 	/* source and dest port*/
   uint32_t seq;                 /* sequence number */
   uint32_t ack;                 /* acknowledgement number */
-  unsigned int flag:6;          /* flag */
+  uint16_t flag;                /* Data offset + Reserved bits + flag */
   uint16_t window;              /* window */
   uint16_t tcp_sum;             /* checksum */
   uint16_t urgent;

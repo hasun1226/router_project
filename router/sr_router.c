@@ -155,7 +155,7 @@ uint16_t tcp_cksum(uint8_t *packet) {
     sr_tcp_hdr_t *ck_tcp_hdr = (sr_tcp_hdr_t *) (data + sizeof(pseudo_tcp_hdr_t));
 
     ck_tcp_hdr->tcp_sum = 0;
-    uint16_t result = ntohs(cksum(data, sizeof(pseudo_tcp_hdr_t) + tcp_len));
+    uint16_t result = cksum(data, sizeof(pseudo_tcp_hdr_t) + tcp_len);
     free(data);
     return result;
 }
@@ -293,12 +293,13 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
             ip_header->ip_src = sr_get_interface(sr, DEFAULT_EXTERNAL_INTERFACE)->ip;
             tcp_hdr->src_port = htons(mapping->aux_ext);
             tcp_hdr->tcp_sum = tcp_cksum(buf);
+			ip_header->ip_sum = 0;
             ip_header->ip_sum = cksum(ip_header, ip_hdr_bytelen);
 
             /* Update time of the mapping */
             update_tcp_connection(mapping, ip_header->ip_dst, tcp_hdr->dst_port, tcp_hdr, 0);
             free(mapping);
-			printf("Outgoing packet headers\n");
+			printf("Outgoing packet headers:\n");
 			print_hdr_ip(buf + sizeof(sr_ethernet_hdr_t));
 			print_hdr_tcp(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)); 
             check_and_send(sr, buf, len, (sr->nat)->int_if_name);
@@ -326,11 +327,15 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
             ip_header->ip_dst = mapping->ip_int;
             tcp_hdr->dst_port = mapping->aux_int;
             tcp_hdr->tcp_sum = tcp_cksum(buf);
+			ip_header->ip_sum = 0;
             ip_header->ip_sum = cksum(ip_header, ip_hdr_bytelen);
 
             /* Update time of the mapping */
             update_tcp_connection(mapping, ip_header->ip_src, tcp_hdr->src_port, tcp_hdr, 1);
             free(mapping);
+			printf("Incoming packet headers:\n");
+			print_hdr_ip(buf + sizeof(sr_ethernet_hdr_t));
+			print_hdr_tcp(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
             check_and_send(sr, buf, len, DEFAULT_EXTERNAL_INTERFACE);
         }
     }
