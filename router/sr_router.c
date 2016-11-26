@@ -90,6 +90,7 @@ void sr_handlepacket(struct sr_instance* sr,
   assert(interface);
 
   printf("*** -> Received packet of length %d \n",len);
+  print_hdrs(packet, len);
 
   /*frame_hdr_size gives the size of the ethernet header (in bytes)*/
   uint16_t frame_type = ethertype(packet);
@@ -265,8 +266,8 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
     {
         sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t *) (buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
         printf("Received packet with the following IP header, TCP header\n");
-        print_hdr_ip(buf + sizeof(sr_ethernet_hdr_t));
-        print_hdr_tcp(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+        /* print_hdr_ip(buf + sizeof(sr_ethernet_hdr_t));
+        print_hdr_tcp(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)); */
 
         /* Sanity check on TCP header */
         uint16_t tcp_sum = tcp_cksum(buf);
@@ -290,13 +291,16 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
 
             /* Rewrite outgoing packet */
             ip_header->ip_src = sr_get_interface(sr, DEFAULT_EXTERNAL_INTERFACE)->ip;
-            tcp_hdr->src_port = mapping->aux_ext;
+            tcp_hdr->src_port = htons(mapping->aux_ext);
             tcp_hdr->tcp_sum = tcp_cksum(buf);
             ip_header->ip_sum = cksum(ip_header, ip_hdr_bytelen);
 
             /* Update time of the mapping */
             update_tcp_connection(mapping, ip_header->ip_dst, tcp_hdr->dst_port, tcp_hdr, 0);
             free(mapping);
+			printf("Outgoing packet headers\n");
+			print_hdr_ip(buf + sizeof(sr_ethernet_hdr_t));
+			print_hdr_tcp(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)); 
             check_and_send(sr, buf, len, (sr->nat)->int_if_name);
         }
 
@@ -304,7 +308,7 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
         else
         {
             printf("Received packet from external interface\n");
-            struct sr_nat_mapping *mapping = sr_nat_lookup_external(sr->nat, tcp_hdr->dst_port, nat_mapping_tcp);
+            struct sr_nat_mapping *mapping = sr_nat_lookup_external(sr->nat, ntohs(tcp_hdr->dst_port), nat_mapping_tcp);
 
             /* No such mapping, check if there is a simultaneous open */
             if (mapping == NULL)
