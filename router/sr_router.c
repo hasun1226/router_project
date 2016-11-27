@@ -58,7 +58,7 @@ void sr_init( struct sr_instance* sr,
     if (sr->nat_status)
     {
         sr->nat = (struct sr_nat *)malloc(sizeof(struct sr_nat));
-        sr_nat_init(sr->nat, icmp_timeout, tcp_established_timeout, tcp_transmission_timeout);
+        sr_nat_init(sr, sr->nat, icmp_timeout, tcp_established_timeout, tcp_transmission_timeout);
     }
 
 } /* -- sr_init -- */
@@ -276,11 +276,28 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
             fprintf(stderr, "NAT process: TCP header sanity check failed with %d\n", tcp_sum);
             return;
         }
+		
+		uint16_t flg = ntohs(tcp_hdr->flag);
 
         /* Packet is outbound(from the internal interface) insert or lookup mapping */
         if (!strcmp(interface, (sr->nat)->int_if_name))
         {
             printf("Received packet from internal interface\n");
+			/* Check to see if the packet is an unsolicited SYN packet 
+			if (((flg & SYN) == SYN) && (contains_interface_ip(sr, ip_header->ip_dst)))
+			{
+				sr_nat_insert_pending_syn(sr->nat, tcp_hdr->dst_port, packet, len, sr->nat->int_if);
+				return;
+			}
+			
+			
+			if (((flg & SYN) == SYN) && (contains_interface_ip(sr, ip_header->ip_dst)))
+			{
+				sr_nat_insert_pending_syn(sr->nat, tcp_hdr->dst_port, packet, len, sr->nat->int_if);
+				return;
+			}
+			*/
+			
             struct sr_nat_mapping *mapping = sr_nat_lookup_internal(sr->nat, ip_header->ip_src, tcp_hdr->src_port, nat_mapping_tcp);
 
             /* No such mapping, insert it! */
@@ -307,9 +324,17 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
 
         /* Packet is from the external interface */
         else
-        {
-            printf("Received packet from external interface\n");
+        {		
+            printf("Received packet from external interface\n");		
+			
             struct sr_nat_mapping *mapping = sr_nat_lookup_external(sr->nat, ntohs(tcp_hdr->dst_port), nat_mapping_tcp);
+			/* Check to see if the packet is an unsolicited SYN packet */
+			if (((flg & SYN) == SYN) && ((!mapping) || (!(contains_connection(mapping->conns, ip_header->ip_dst, ntohs(tcp_hdr->dst_port))))))
+			{
+				sr_nat_insert_pending_syn(sr->nat, tcp_hdr->dst_port, packet, len, sr->nat->ext_if);
+				return;
+			}
+			
 
             /* No such mapping, check if there is a simultaneous open */
             if (mapping == NULL)

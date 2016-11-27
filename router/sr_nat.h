@@ -36,6 +36,9 @@ struct sr_nat_pending_syn
   time_t time_received;
   uint16_t aux_ext;
   sr_ip_hdr_t *ip_hdr;
+  uint8_t *packet;		/* Original unsolicited syn packet */
+  uint32_t packet_len;
+  struct sr_if *orig_if;
   struct sr_nat_pending_syn *next;
 };
 typedef struct sr_nat_pending_syn sr_nat_pending_syn_t;
@@ -64,6 +67,7 @@ struct sr_nat_mapping {
 
 struct sr_nat {
   /* add any fields here */
+  struct sr_instance* sr;
   struct sr_nat_mapping *mappings;
   sr_nat_pending_syn_t *pending_syns;
   char *int_if_name;
@@ -108,7 +112,7 @@ void update_incoming_tcp_state(struct sr_nat_connection *connection, sr_tcp_hdr_
 
 void deleteMapping(struct sr_nat_mapping **head, struct sr_nat_mapping *n);
 
-void sr_nat_insert_pending_syn(struct sr_nat *nat, uint16_t aux_ext, sr_ip_hdr_t *ip_header);
+void sr_nat_insert_pending_syn(struct sr_nat *nat, uint16_t aux_ext, uint8_t *packet, uint32_t len, struct sr_if *orig_if);
 int is_nat_timeout_pending_syn(sr_nat_pending_syn_t *pending_syn_entry);
 void deletePendingSyn(sr_nat_pending_syn_t **head, sr_nat_pending_syn_t *n);
 void nat_timeout_pending_syns(struct sr_nat *nat, sr_nat_pending_syn_t **head);

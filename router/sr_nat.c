@@ -15,7 +15,8 @@
 #define DEFAULT_EXTERNAL_INTERFACE "eth2"
 #define UNSOLICITED_SYN_TIMEOUT 6
 
-int sr_nat_init(struct sr_nat *nat,
+int sr_nat_init(struct sr_instance* sr,
+				struct sr_nat *nat,
                 time_t icmp_timeout,
                 time_t tcp_established_timeout,
                 time_t tcp_transmission_timeout) { /* Initializes the nat */
@@ -41,8 +42,11 @@ int sr_nat_init(struct sr_nat *nat,
   nat->mappings = NULL;
 
   /* Initialize any variables here */
+  nat->sr = sr;
   nat->int_if_name = DEFAULT_INTERNAL_INTERFACE;
   nat->ext_if_name = DEFAULT_EXTERNAL_INTERFACE;
+  nat->int_if = sr_get_interface(sr, nat->int_if_name);
+  nat->ext_if = sr_get_interface(sr, nat->ext_if_name);
   nat->icmp_timeout = icmp_timeout;
   nat->tcp_established_timeout = tcp_established_timeout;
   nat->tcp_transmission_timeout = tcp_transmission_timeout;
@@ -57,7 +61,7 @@ int is_nat_timeout_icmp(struct sr_nat *nat, struct sr_nat_mapping *mapping)
 {
     time_t now;
     time(&now);
-    return difftime(now, mapping->last_updated) < nat->icmp_timeout;
+    return difftime(now, mapping->last_updated) > nat->icmp_timeout;
 }
 
 /*
@@ -67,8 +71,8 @@ int is_nat_timeout_tcp(struct sr_nat *nat, struct sr_nat_connection *connection_
 {
     time_t now;
     time(&now);
-    int et_difference = difftime(now, connection_entry->last_updated) < nat->tcp_established_timeout;
-    int trans_timeout = difftime(now, connection_entry->last_updated) < nat->tcp_transmission_timeout;
+    int et_difference = difftime(now, connection_entry->last_updated) > nat->tcp_established_timeout;
+    int trans_timeout = difftime(now, connection_entry->last_updated) > nat->tcp_transmission_timeout;
     int established = connection_entry->state == tcp_state_established;
     int trasit = !established;
 
@@ -248,7 +252,7 @@ void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
 
     while (1)
     {
-        sleep(1.0);
+        sleep(0.1);
         pthread_mutex_lock(&(nat->lock));
 
         /*time_t curtime = time(NULL);*/
@@ -346,13 +350,19 @@ struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_nat *nat,
 
     mapping->aux_int = aux_int;                               /* internal port or icmp id */
 
-    mapping->aux_ext = generate_port_number(nat->mappings, ip_int, aux_int);                               /* external port or icmp id */
+    mapping->aux_ext = generate_port_number(nat->mappings, ip_int, aux_int);                     /* external port or icmp id (in host byte order) */
 
     time(&mapping->last_updated);                             /* use to timeout mappings */
     mapping->conns = NULL;                                    /* list of connections. null for ICMP */
 
     mapping->next = nat->mappings;
     nat->mappings = mapping;
+	
+	if (type == nat_mapping_tcp) {
+		struct sr_nat_connection *connection = create_connection(mapping->ip_ext, mapping->aux_ext);
+		connection->next = NULL;
+		mapping->conns = connection;
+	}
 
     struct sr_nat_mapping *copy = (struct sr_nat_mapping *) malloc(sizeof(struct sr_nat_mapping));
     memcpy(copy, mapping, sizeof(struct sr_nat_mapping));
@@ -373,9 +383,16 @@ void nat_timeout_pending_syns(struct sr_nat *nat, sr_nat_pending_syn_t **head)
             if (sr_nat_lookup_external(nat, current_pending_syn->aux_ext, nat_mapping_tcp) == NULL)
             {
                 /*TODO: FIX THIS PART OF THE FUNCTION*/    
-               /*SEND ICMP UNREACHABLE*/ 
-                /*sr_if_t *out_interface = get_external_iface(sr);
-                sr_send_icmp_t3(sr, ICMP_NET_UNREACHABLE, packet, len, out_interface);*/
+                /*SEND ICMP UNREACHABLE*/ 
+                struct sr_if *out_interface = current_pending_syn->orig_if;
+				/* 
+				uint8_t *packet = (uint8_t *) malloc(sizeof(sr_tcp_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_ethernet_hdr_t));
+				sr_ethernet_hdr_t *ethernet_header = (sr_ethernet_hdr_t *)packet;
+				sr_ip_hdr_t *ip_hdr = (sr_ip_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t));
+				sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+				*/
+
+                sr_send_icmp_t3(nat->sr, ICMP_PORT_UNREACHABLE, current_pending_syn->packet, (unsigned int) (current_pending_syn->packet_len), out_interface);
             }
 
             deletePendingSyn(head, current_pending_syn);
@@ -405,6 +422,9 @@ void deletePendingSyn(sr_nat_pending_syn_t **head, sr_nat_pending_syn_t *n)
 
         /*free the ip header*/
         free(temp->ip_hdr);
+		
+		/* free the stored packet */
+		free(temp->packet);
 
         /* free memory */
         free(temp);
@@ -441,14 +461,20 @@ void deletePendingSyn(sr_nat_pending_syn_t **head, sr_nat_pending_syn_t *n)
     return;
 }
 
-void sr_nat_insert_pending_syn(struct sr_nat *nat, uint16_t aux_ext, sr_ip_hdr_t *ip_header) 
+void sr_nat_insert_pending_syn(struct sr_nat *nat, uint16_t aux_ext, uint8_t *packet, uint32_t len, struct sr_if *orig_if) 
 {
+  sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t));
+	
   unsigned int ip_len = ntohs(ip_header->ip_len);
   sr_nat_pending_syn_t *pending_syn = (sr_nat_pending_syn_t *)malloc(sizeof(sr_nat_pending_syn_t));
   time(&pending_syn->time_received);
   pending_syn->aux_ext = aux_ext;
   pending_syn->ip_hdr = malloc(ip_len);
   memcpy(pending_syn->ip_hdr,ip_header,ip_len);
+  pending_syn->packet = malloc(len);
+  memcpy(pending_syn->packet, packet, len);
+  pending_syn->packet_len = len;
+  pending_syn->orig_if = orig_if;
 
   pending_syn->next = nat->pending_syns;
   nat->pending_syns = pending_syn;
@@ -470,6 +496,7 @@ struct sr_nat_connection *create_connection(uint32_t dst_ip, uint16_t dst_port)
     new_connection->fin_sent_sequence_number = 0;
     new_connection->fin_received_sequence_number = 0;
     new_connection->state = 0; /*DOUBLE CHECK THIS DECLARATION*/
+	time(&new_connection->last_updated);
 
     return new_connection;
 }
