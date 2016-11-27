@@ -249,10 +249,14 @@ int sr_nat_destroy(struct sr_nat *nat) {  /* Destroys the nat (free memory) */
 void *sr_nat_timeout(void *nat_ptr) {  /* Periodic Timout handling */
 
     struct sr_nat *nat = (struct sr_nat *)nat_ptr;
+	long delay_milliseconds = 100;
+	static struct timespec ts;
+	ts.tv_sec = 0;
+	ts.tv_nsec = (delay_milliseconds % 1000) * 1000000;
 
     while (1)
     {
-        sleep(0.1);
+        nanosleep(&ts, NULL);
         pthread_mutex_lock(&(nat->lock));
 
         /*time_t curtime = time(NULL);*/
@@ -285,7 +289,7 @@ struct sr_nat_mapping *sr_nat_lookup_external(struct sr_nat *nat,
         {
             copy = (struct sr_nat_mapping *) malloc(sizeof(struct sr_nat_mapping));
             memcpy(copy, current_entry, sizeof(struct sr_nat_mapping));
-	    pthread_mutex_unlock(&(nat->lock));
+			pthread_mutex_unlock(&(nat->lock));
             return copy;
         }
 
@@ -375,10 +379,13 @@ struct sr_nat_mapping *sr_nat_insert_mapping(struct sr_nat *nat,
 void nat_timeout_pending_syns(struct sr_nat *nat, sr_nat_pending_syn_t **head)
 {
     sr_nat_pending_syn_t *current_pending_syn = *head;
+	sr_tcp_hdr_t *tcp_hdr;
 
     while (current_pending_syn != NULL)
     {
-        if (is_nat_timeout_pending_syn(current_pending_syn)) 
+		tcp_hdr = (sr_tcp_hdr_t *) (current_pending_syn->packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+        if (is_nat_timeout_pending_syn(current_pending_syn) ||
+			ntohs(tcp_hdr->dst_port) < 1024) 	/* special case */
         {
             if (sr_nat_lookup_external(nat, current_pending_syn->aux_ext, nat_mapping_tcp) == NULL)
             {

@@ -283,20 +283,13 @@ void nat_process(struct sr_instance *sr, uint8_t *packet, unsigned int len, char
         if (!strcmp(interface, (sr->nat)->int_if_name))
         {
             printf("Received packet from internal interface\n");
-			/* Check to see if the packet is an unsolicited SYN packet 
-			if (((flg & SYN) == SYN) && (contains_interface_ip(sr, ip_header->ip_dst)))
+			/* Check to see if the packet is an unsolicited SYN packet*/			
+			if (((flg & SYN) == SYN) && (sr->nat->int_if->ip == ip_header->ip_dst))
 			{
 				sr_nat_insert_pending_syn(sr->nat, tcp_hdr->dst_port, packet, len, sr->nat->int_if);
 				return;
 			}
 			
-			
-			if (((flg & SYN) == SYN) && (contains_interface_ip(sr, ip_header->ip_dst)))
-			{
-				sr_nat_insert_pending_syn(sr->nat, tcp_hdr->dst_port, packet, len, sr->nat->int_if);
-				return;
-			}
-			*/
 			
             struct sr_nat_mapping *mapping = sr_nat_lookup_internal(sr->nat, ip_header->ip_src, tcp_hdr->src_port, nat_mapping_tcp);
 
